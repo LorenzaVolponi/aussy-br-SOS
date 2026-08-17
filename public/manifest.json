@@ -1,0 +1,134 @@
+{
+  "name": "Aussy Ontech — Operadora de Resiliência Orbital",
+  "short_name": "Aussy Ontech",
+  "description": "Operadora virtual de emergência e internet básica que combina satélites D2C (Starlink, AST SpaceMobile, Lynk, Iridium), infraestrutura ANATEL, alertas INMET/CEMADEN/INPE/CPTEC, rios ANA, municípios IBGE, Defesa Civil SEDEC, sismos USGS, eventos NASA EONET e WiFi público brasileiro. Funciona offline.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "orientation": "any",
+  "background_color": "#0a0e14",
+  "theme_color": "#0a0e14",
+  "categories": ["utilities", "navigation", "news", "weather", "emergency", "travel", "government"],
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "form_factor": "narrow",
+      "label": "Aussy Ontech — Visão principal"
+    },
+    {
+      "src": "/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "form_factor": "wide",
+      "label": "Aussy Ontech — Modo paisagem"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "SOS de Emergência",
+      "short_name": "SOS",
+      "url": "/?tab=emergency",
+      "description": "Ativa modo de emergência imediatamente (192, 190, 193)",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Satélites visíveis",
+      "short_name": "Satélites",
+      "url": "/?tab=satellites",
+      "description": "Ver satélites D2C passando agora sobre o Brasil (Starlink, GOES-16)",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Previsão do tempo",
+      "short_name": "Clima",
+      "url": "/?tab=clima",
+      "description": "Previsão CPTEC/INPE + estações INMET em tempo real + imagens GOES-16",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Mapa offline",
+      "short_name": "Mapa",
+      "url": "/?tab=mapa",
+      "description": "Mapa OpenStreetMap com cache offline + torres ANATEL",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Defesa Civil",
+      "short_name": "Defesa",
+      "url": "/?tab=defesa",
+      "description": "Alertas SEDEC + contatos das Coordenadorias Estaduais (CEDEC) · 199",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Natureza e rios",
+      "short_name": "Natureza",
+      "url": "/?tab=natureza",
+      "description": "CEMADEN, níveis de rios (ANA), fauna brasileira e eventos NASA EONET",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "file_handlers": [],
+  "protocol_handlers": [
+    {
+      "protocol": "mailto",
+      "url": "/?mailto=%s"
+    },
+    {
+      "protocol": "tel",
+      "url": "/?tel=%s"
+    }
+  ],
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
+  "edge_side_panel": {
+    "preferred_width": 400
+  },
+  "handle_links": "preferred",
+  "id": "/",
+  "scope_extensions": []
+}

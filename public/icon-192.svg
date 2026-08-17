@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0a0e14"/>
+      <stop offset="100%" stop-color="#0f1722"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#10b981"/>
+    </linearGradient>
+  </defs>
+  <rect width="192" height="192" rx="40" fill="url(#bg)"/>
+  <!-- Orbits -->
+  <ellipse cx="96" cy="96" rx="68" ry="28" fill="none" stroke="url(#ring)" stroke-width="2" opacity="0.4" transform="rotate(-30 96 96)"/>
+  <ellipse cx="96" cy="96" rx="68" ry="28" fill="none" stroke="url(#ring)" stroke-width="2" opacity="0.7" transform="rotate(30 96 96)"/>
+  <!-- Satellite body -->
+  <rect x="82" y="82" width="28" height="28" rx="4" fill="#22d3ee"/>
+  <!-- Solar panels -->
+  <rect x="56" y="86" width="20" height="20" fill="#0ea5e9" opacity="0.9"/>
+  <rect x="116" y="86" width="20" height="20" fill="#0ea5e9" opacity="0.9"/>
+  <!-- Signal beams -->
+  <circle cx="96" cy="96" r="40" fill="none" stroke="#10b981" stroke-width="1.5" opacity="0.5"/>
+  <circle cx="96" cy="96" r="55" fill="none" stroke="#10b981" stroke-width="1" opacity="0.25"/>
+  <!-- Center dot -->
+  <circle cx="96" cy="96" r="3" fill="#fff"/>
+</svg>
