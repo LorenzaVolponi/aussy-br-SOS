@@ -29,11 +29,59 @@ async function assertFileContains(path, fragments) {
   return content
 }
 
+function forbid(path, content, fragments) {
+  for (const fragment of fragments) {
+    if (content.includes(fragment)) failures.push(`${path} contains forbidden pattern: ${fragment}`)
+  }
+}
+
 await walk(root)
 
-await assertFileContains('public/sw.js', [
+const sw = await assertFileContains('public/sw.js', [
+  "const CACHE_VERSION = 'aussy-v8'",
   "const OSM_TILES_CACHE = 'aussy-v2-osm-tiles'",
   'k !== OSM_TILES_CACHE',
+  '/_next/static/',
+  'PRECACHE_SHELL',
+  'PRECACHE_EMERGENCY',
+  "response.type === 'opaque'",
+  'currentCachesReady',
+])
+forbid('public/sw.js', sw, ["'User-Agent'", 'aussy-v2-emergency', 'aussy-v2-statics'])
+try {
+  // Compila sem executar: pega erros de sintaxe no service worker antes do deploy.
+  new Function(sw)
+} catch (error) {
+  failures.push(`public/sw.js syntax error: ${error instanceof Error ? error.message : String(error)}`)
+}
+
+const offlineManager = await assertFileContains('src/components/aussy/offline-manager.tsx', [
+  "sendWorkerCommand('PRECACHE_SHELL')",
+  "sendWorkerCommand('PRECACHE_EMERGENCY')",
+  'MessageChannel',
+  'App shell + JS/CSS em cache',
+])
+forbid('src/components/aussy/offline-manager.tsx', offlineManager, ['aussy-v2-emergency', 'aussy-v2-statics'])
+
+const geolocation = await assertFileContains('src/hooks/use-geolocation.ts', [
+  "const STORAGE_KEY = 'aussy_last_location_v1'",
+  'source: \'cached\'',
+  'const detect = useCallback',
+  "fetch('/api/network/status'",
+])
+forbid('src/hooks/use-geolocation.ts', geolocation, ['https://ipapi.co/json/'])
+
+const networkStatus = await assertFileContains('src/app/api/network/status/route.ts', [
+  "const CONNECTIVITY_TARGET = 'https://www.google.com/generate_204'",
+  'geo: latitude !== null && longitude !== null',
+  'Nenhuma URL fornecida pelo cliente é buscada pelo servidor',
+])
+forbid('src/app/api/network/status/route.ts', networkStatus, ["searchParams.get('url')"])
+
+await assertFileContains('src/app/layout.tsx', [
+  "window.addEventListener('online'",
+  "worker.postMessage({ type: 'PRECACHE_SHELL' })",
+  "worker.postMessage({ type: 'PRECACHE_EMERGENCY' })",
 ])
 
 await assertFileContains('src/app/api/coverage/towers/route.ts', [
@@ -73,4 +121,4 @@ if (failures.length) {
   process.exit(1)
 }
 
-console.log('Aussy repository invariants OK')
+console.log('Aussy repository invariants OK — online/offline resilience checks passed')
