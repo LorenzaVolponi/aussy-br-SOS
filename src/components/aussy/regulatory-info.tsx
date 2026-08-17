@@ -1,8 +1,8 @@
 'use client'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { DataProvenance } from '@/components/aussy/data-provenance'
 import {
   Landmark,
   FileText,
@@ -11,48 +11,45 @@ import {
   ExternalLink,
   CheckCircle2,
   Clock,
-  XCircle,
+  ShieldAlert,
 } from 'lucide-react'
 import { BRAZIL_REGULATORY } from '@/lib/data/satellites'
 
 export function RegulatoryInfo() {
   return (
     <div className="space-y-4">
-      {/* ANATEL status */}
       <Card className="glass-card border-signal/30">
         <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Landmark className="h-5 w-5 text-signal" />
-            Regulação Brasileira — D2C
-          </CardTitle>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Landmark className="h-5 w-5 text-signal" />
+              Regulação Brasileira — D2C
+            </CardTitle>
+            <DataProvenance quality="static" compact note="Conteúdo regulatório armazenado no projeto; não é consulta em tempo real à ANATEL." />
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          <DataProvenance
+            quality="static"
+            source="Base regulatória local do Aussy Ontech"
+            note="Status regulatório e negociações podem mudar. Antes de qualquer decisão operacional, comercial ou jurídica, confirme diretamente nas fontes oficiais listadas abaixo."
+          />
+
           <div>
-            <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">
-              Agência reguladora
-            </div>
+            <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Agência reguladora</div>
             <div className="text-sm font-medium">{BRAZIL_REGULATORY.agency}</div>
           </div>
 
           <div>
-            <div className="text-xs uppercase tracking-wider text-amber-400 mb-1">
-              Status D2C no Brasil
-            </div>
-            <p className="text-sm text-foreground/80 leading-relaxed">
-              {BRAZIL_REGULATORY.d2cStatus}
-            </p>
+            <div className="text-xs uppercase tracking-wider text-amber-400 mb-1">Status registrado na base local</div>
+            <p className="text-sm text-foreground/80 leading-relaxed">{BRAZIL_REGULATORY.d2cStatus}</p>
           </div>
 
           <div>
-            <div className="text-xs uppercase tracking-wider text-emerald-400 mb-2">
-              Operadoras em negociação
-            </div>
+            <div className="text-xs uppercase tracking-wider text-emerald-400 mb-2">Referências cadastradas para acompanhamento</div>
             <div className="space-y-1.5">
               {BRAZIL_REGULATORY.operatorsInNegotiation.map((op, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-2 p-2 rounded-md bg-secondary/30 border border-border/30"
-                >
+                <div key={i} className="flex items-center gap-2 p-2 rounded-md bg-secondary/30 border border-border/30">
                   <Clock className="h-3.5 w-3.5 text-amber-400 flex-shrink-0" />
                   <span className="text-xs text-foreground/80">{op}</span>
                 </div>
@@ -62,21 +59,17 @@ export function RegulatoryInfo() {
         </CardContent>
       </Card>
 
-      {/* Regulações */}
       <Card className="glass-card">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <FileText className="h-5 w-5 text-orbit" />
-            Marcos Regulatórios
+            Marcos Regulatórios cadastrados
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-1.5">
             {BRAZIL_REGULATORY.relevantRegulations.map((reg, i) => (
-              <div
-                key={i}
-                className="flex items-start gap-2 p-2 rounded-md bg-secondary/30 border border-border/30"
-              >
+              <div key={i} className="flex items-start gap-2 p-2 rounded-md bg-secondary/30 border border-border/30">
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 mt-0.5 flex-shrink-0" />
                 <span className="text-xs text-foreground/80">{reg}</span>
               </div>
@@ -85,76 +78,69 @@ export function RegulatoryInfo() {
         </CardContent>
       </Card>
 
-      {/* Datasets públicos */}
       <Card className="glass-card">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <Database className="h-5 w-5 text-signal" />
-            Dados Públicos Oficiais
+            Fontes públicas para verificação
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
             {BRAZIL_REGULATORY.publicDatasets.map((dataset, i) => (
-              <div
-                key={i}
-                className="p-3 rounded-md bg-secondary/30 border border-border/30"
-              >
+              <div key={i} className="p-3 rounded-md bg-secondary/30 border border-border/30">
                 <div className="flex items-start justify-between gap-2 mb-1">
                   <div className="flex items-center gap-1.5">
                     <Building2 className="h-3.5 w-3.5 text-signal flex-shrink-0" />
                     <span className="text-sm font-medium">{dataset.name}</span>
                   </div>
                   <Button asChild variant="ghost" size="sm" className="h-6 w-6 p-0 flex-shrink-0">
-                    <a href={dataset.url} target="_blank" rel="noopener noreferrer">
+                    <a href={dataset.url} target="_blank" rel="noopener noreferrer" aria-label={`Abrir fonte ${dataset.name}`}>
                       <ExternalLink className="h-3 w-3" />
                     </a>
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {dataset.description}
-                </p>
+                <p className="text-xs text-muted-foreground leading-relaxed">{dataset.description}</p>
               </div>
             ))}
           </div>
         </CardContent>
       </Card>
 
-      {/* Por que D2C não funcionou ainda no Brasil */}
       <Card className="glass-card border-amber-500/30">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base text-amber-400">
-            <XCircle className="h-5 w-5" />
-            Por que D2C ainda não funciona no Brasil?
+            <ShieldAlert className="h-5 w-5" />
+            Barreiras técnicas e regulatórias do D2C
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <div className="space-y-2">
             <Block
               num="1"
-              title="Espectro licenciado"
-              desc="ANATEL ainda não autorizou o uso das bandas celulares (1910-1990 MHz) para retransmissão via satélite. Cada MHz é leiloado — operadoras não cedem gratuitamente."
+              title="Espectro e autorização"
+              desc="Serviços D2C dependem de regras de uso de espectro e autorizações aplicáveis. A situação deve ser confirmada na regulação vigente antes de qualquer implantação."
             />
             <Block
               num="2"
-              title="Acordo operadora-satélite"
-              desc="Mesmo com autorização da ANATEL, é necessário contrato bilateral entre a operadora brasileira (Vivo/Claro/Tim) e o operador do satélite (SpaceX/AST/Lynk). Negociações em andamento desde 2024."
+              title="Acordos entre operadora e satélite"
+              desc="A conectividade comercial depende de acordos técnicos e comerciais entre redes móveis, operadores de satélite e demais participantes do ecossistema."
             />
             <Block
               num="3"
-              title="Atualização de firmware"
-              desc="Mesmo após acordo, os celulares precisam receber atualização OTA (Over-The-Air) habilitando a conectividade D2C. Isso depende da fabricante (Samsung, Apple, Motorola) trabalhar com a operadora."
+              title="Compatibilidade dos dispositivos"
+              desc="A experiência final depende de hardware, firmware, sistema operacional, bandas suportadas e habilitação da operadora; não basta haver cobertura orbital."
             />
             <Block
               num="4"
-              title="Modelo de cobrança"
-              desc="Ainda não está definido se será: incluso no plano, add-on pago, ou cota gratuita (como T-Mobile faz nos EUA). Esta decisão impacta diretamente se será 'gratuito' para o usuário final."
+              title="Modelo de serviço"
+              desc="Disponibilidade, franquia, preço e prioridade de mensagens de emergência dependem do produto comercial e da regulação aplicável em cada lançamento."
             />
           </div>
 
           <div className="pt-3 border-t border-border/30">
             <p className="text-xs text-foreground/70 leading-relaxed">
-              <strong className="text-amber-400">Previsão realista:</strong> D2C operacional no Brasil entre Q3 2026 e Q2 2027, com Vivo e AST SpaceMobile como prováveis pioneiros. Até lá, este app oferece o máximo possível com tecnologias ativas hoje.
+              <strong className="text-amber-400">Governança:</strong> o Aussy não deve exibir previsão de lançamento, autorização ou parceria como fato atual sem uma fonte oficial consultada e uma data de verificação associada.
             </p>
           </div>
         </CardContent>
