@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 /**
- * API: CPTEC/INPE — previsão do tempo para uma cidade
- * Fonte: servicos.cptec.inpe.br (serviço público INPE)
- * Fluxo: lat/lon -> busca cidade mais próxima via CPTEC -> previsão 4 dias
+ * API: CPTEC/INPE — previsão do tempo para uma cidade.
+ *
+ * Regra de segurança: sem resposta confirmada do CPTEC, NÃO produzimos
+ * temperatura, chuva, umidade ou condição sintética. O Service Worker pode
+ * servir a última previsão real cacheada; sem cache, o cliente recebe
+ * `days: []` + estado indisponível.
  */
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-export const revalidate = 3600 // 1 hora
+export const revalidate = 3600
 
 interface ForecastDay {
   date: string
@@ -71,7 +74,7 @@ export async function GET(req: NextRequest) {
     const cityUrl = `https://servicos.cptec.inpe.br/API/v1/latitude/${lat.toFixed(4)}/${lon.toFixed(4)}`
     const ctrl1 = new AbortController()
     const t1 = setTimeout(() => ctrl1.abort(), 5000)
-    const cityRes = await fetch(cityUrl, { signal: ctrl1.signal })
+    const cityRes = await fetch(cityUrl, { signal: ctrl1.signal, cache: 'no-store' })
     clearTimeout(t1)
 
     if (!cityRes.ok) throw new Error(`CPTEC city HTTP ${cityRes.status}`)
@@ -81,19 +84,18 @@ export async function GET(req: NextRequest) {
     const cityName = cityData?.nome || 'Cidade desconhecida'
     const uf = cityData?.uf || ''
 
-    if (!cityId) throw new Error('CPTEC: cidade não encontrada para estas coords')
+    if (!cityId) throw new Error('CPTEC: cidade não encontrada para estas coordenadas')
 
     const forecastUrl = `https://servicos.cptec.inpe.br/API/cptec/v1/cidade/${cityId}/previsao`
     const ctrl2 = new AbortController()
     const t2 = setTimeout(() => ctrl2.abort(), 6000)
-    const fcRes = await fetch(forecastUrl, { signal: ctrl2.signal })
+    const fcRes = await fetch(forecastUrl, { signal: ctrl2.signal, cache: 'no-store' })
     clearTimeout(t2)
 
     if (!fcRes.ok) throw new Error(`CPTEC forecast HTTP ${fcRes.status}`)
 
     const fcData = await fcRes.json()
     const rawDays: any[] = []
-
     if (fcData?.previsao) rawDays.push(...fcData.previsao)
     if (fcData?.clima) rawDays.push(...fcData.clima)
 
@@ -115,76 +117,35 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    return NextResponse.json(
-      {
-        source: 'CPTEC/INPE — Centro de Previsão de Tempo e Estudos Climáticos',
-        sourceUrl: 'https://cptec.inpe.br',
-        queriedAt: new Date().toISOString(),
-        center: { lat, lon },
-        city: { id: cityId, name: cityName, uf },
-        days,
-        total: days.length,
-        offline: false,
+    return NextResponse.json({
+      source: 'CPTEC/INPE — Centro de Previsão de Tempo e Estudos Climáticos',
+      sourceUrl: 'https://cptec.inpe.br',
+      queriedAt: new Date().toISOString(),
+      center: { lat, lon },
+      city: { id: cityId, name: cityName, uf },
+      days,
+      total: days.length,
+      offline: false,
+      error: null,
+      dataQuality: 'live',
+    }, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=7200',
       },
-      {
-        headers: {
-          'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=7200',
-        },
-      }
-    )
-  } catch (err: any) {
-    const seasons = ['verão', 'outono', 'inverno', 'primavera']
-    const now = new Date()
-    const month = now.getMonth()
-    let season = 'verão'
-    if (month >= 2 && month <= 4) season = 'outono'
-    else if (month >= 5 && month <= 7) season = 'inverno'
-    else if (month >= 8 && month <= 10) season = 'primavera'
-
-    let region = 'Centro-Oeste'
-    if (lat > -5) region = 'Norte'
-    else if (lat > -15 && lon < -45) region = 'Nordeste'
-    else if (lat < -20 && lon < -40) region = 'Sudeste'
-    else if (lat < -25) region = 'Sul'
-
-    const tempRange: Record<string, [number, number]> = {
-      Norte: [24, 32],
-      Nordeste: [25, 31],
-      'Centro-Oeste': [18, 30],
-      Sudeste: [16, 28],
-      Sul: [12, 24],
-    }
-    const [min, max] = tempRange[region] || [18, 28]
-
-    const fallbackDays: ForecastDay[] = Array.from({ length: 4 }, (_, i) => {
-      const d = new Date(now.getTime() + i * 86400000)
-      return {
-        date: d.toISOString().slice(0, 10),
-        dayOfWeek: DAY_NAMES[d.getDay()],
-        condition: 'ND',
-        conditionLabel: `Clima típico ${season} (${region})`,
-        min: min + Math.floor(Math.random() * 3),
-        max: max - Math.floor(Math.random() * 3),
-        icon: season === 'verão' ? '☀️' : season === 'inverno' ? '🌫️' : '⛅',
-        wind: '10-15 km/h',
-        humidity: 60,
-        rainProbability: season === 'verão' ? 40 : 20,
-      }
     })
-
-    return NextResponse.json(
-      {
-        source: 'fallback heurístico (offline ou CPTEC indisponível)',
-        sourceUrl: 'https://cptec.inpe.br',
-        queriedAt: new Date().toISOString(),
-        center: { lat, lon },
-        city: { id: 0, name: region, uf: '' },
-        days: fallbackDays,
-        total: fallbackDays.length,
-        offline: true,
-        note: 'CPTEC indisponível; exibindo estimativa por região/estação do Brasil.',
-      },
-      { status: 200 }
-    )
+  } catch (err) {
+    return NextResponse.json({
+      source: 'CPTEC/INPE — indisponível',
+      sourceUrl: 'https://cptec.inpe.br',
+      queriedAt: new Date().toISOString(),
+      center: { lat, lon },
+      city: null,
+      days: [],
+      total: 0,
+      offline: false,
+      error: 'unavailable',
+      dataQuality: 'unavailable',
+      note: 'Não foi possível confirmar uma previsão no CPTEC. Nenhuma previsão sintética foi gerada.',
+    }, { status: 503 })
   }
 }
