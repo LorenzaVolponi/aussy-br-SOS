@@ -49,7 +49,6 @@ const sw = await assertFileContains('public/sw.js', [
 ])
 forbid('public/sw.js', sw, ["'User-Agent'", 'aussy-v2-emergency', 'aussy-v2-statics'])
 try {
-  // Compila sem executar: pega erros de sintaxe no service worker antes do deploy.
   new Function(sw)
 } catch (error) {
   failures.push(`public/sw.js syntax error: ${error instanceof Error ? error.message : String(error)}`)
@@ -65,7 +64,7 @@ forbid('src/components/aussy/offline-manager.tsx', offlineManager, ['aussy-v2-em
 
 const geolocation = await assertFileContains('src/hooks/use-geolocation.ts', [
   "const STORAGE_KEY = 'aussy_last_location_v1'",
-  'source: \'cached\'',
+  "source: 'cached'",
   'const detect = useCallback',
   "fetch('/api/network/status'",
 ])
@@ -78,10 +77,37 @@ const networkStatus = await assertFileContains('src/app/api/network/status/route
 ])
 forbid('src/app/api/network/status/route.ts', networkStatus, ["searchParams.get('url')"])
 
+await assertFileContains('src/hooks/use-network.ts', [
+  '!navigator.onLine',
+  "res.headers.get('X-Aussy-Cached')",
+  'new AbortController()',
+])
+
+const networkMonitor = await assertFileContains('src/components/aussy/network-monitor.tsx', [
+  'if (!network.online)',
+  "r.headers.get('X-Aussy-Cached')",
+  'network.online && serverStatus?.externalIp',
+])
+forbid('src/components/aussy/network-monitor.tsx', networkMonitor, ['Recebe alertas do governo'])
+
 await assertFileContains('src/app/layout.tsx', [
   "window.addEventListener('online'",
   "worker.postMessage({ type: 'PRECACHE_SHELL' })",
   "worker.postMessage({ type: 'PRECACHE_EMERGENCY' })",
+])
+
+const emergencyContacts = await assertFileContains('src/app/api/emergency/contacts/route.ts', [
+  "verifiedAt: '2026-08-17'",
+  "channel: 'automático'",
+  "number: '40199'",
+  'Não disponível oficialmente no Brasil em 17/08/2026',
+  'O Aussy não cria conectividade por satélite',
+])
+forbid('src/app/api/emergency/contacts/route.ts', emergencyContacts, [
+  'US$ 14.95/mês',
+  'Samsung Galaxy S22+',
+  'Snapdragon Satellite',
+  'channel: 4370',
 ])
 
 await assertFileContains('src/app/api/coverage/towers/route.ts', [
