@@ -15,7 +15,7 @@ export interface GeoPoint {
 
 const STORAGE_KEY = 'aussy_last_location_v1'
 
-function isValidCoordinate(lat: unknown, lon: unknown): lat is number {
+function isValidCoordinate(lat: unknown, lon: unknown): boolean {
   return typeof lat === 'number' &&
     typeof lon === 'number' &&
     Number.isFinite(lat) &&
@@ -32,7 +32,7 @@ function readCachedPoint(): GeoPoint | null {
     const parsed = JSON.parse(raw) as Partial<GeoPoint>
     if (!isValidCoordinate(parsed.lat, parsed.lon)) return null
     return {
-      lat: parsed.lat,
+      lat: parsed.lat as number,
       lon: parsed.lon as number,
       accuracy: parsed.accuracy,
       source: 'cached',
@@ -94,13 +94,10 @@ export function useGeolocation() {
     const res = await fetch('/api/network/status', { cache: 'no-store' })
     if (!res.ok) throw new Error('Status de rede indisponível')
     const data = await res.json()
-    if (!data.externalIp) throw new Error('IP não disponível')
+    const geo = data?.geo
 
-    const geoRes = await fetch('https://ipapi.co/json/', { cache: 'no-store' })
-    if (!geoRes.ok) throw new Error('Geolocalização por IP indisponível')
-    const geo = await geoRes.json()
-    if (!isValidCoordinate(geo.latitude, geo.longitude)) {
-      throw new Error('Coordenadas por IP inválidas')
+    if (!geo || !isValidCoordinate(geo.latitude, geo.longitude)) {
+      throw new Error('Localização aproximada por IP indisponível')
     }
 
     return {
@@ -109,9 +106,9 @@ export function useGeolocation() {
       accuracy: 5000,
       source: 'ip',
       timestamp: new Date().toISOString(),
-      city: geo.city,
-      region: geo.region,
-      country: geo.country_name,
+      city: geo.city || undefined,
+      region: geo.region || undefined,
+      country: geo.country || undefined,
     }
   }, [])
 
