@@ -27,7 +27,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: "Aussy Ontech — Operadora de Resiliência Orbital",
   description:
-    "App offline-first para emergência, cobertura e satélites no Brasil. SOS, WiFi grátis, torres ANATEL, alertas INMET/CEMADEN/INPE/CPTEC, rios ANA, municípios IBGE, Defesa Civil e satélites D2C em um só lugar. Funciona sem internet.",
+    "Plataforma offline-first de resiliência para o Brasil: SOS, guias locais, mapas preparados para offline, geolocalização, clima e alertas com cache, Defesa Civil e dados orbitais com transparência de origem.",
   keywords: [
     "satélite",
     "D2C",
@@ -71,9 +71,9 @@ export const metadata: Metadata = {
     shortcut: ["/favicon-32.png"],
   },
   openGraph: {
-    title: "Aussy Ontech — Emergência e satélites offline",
+    title: "Aussy Ontech — Resiliência e emergência offline-first",
     description:
-      "SOS, WiFi grátis, torres ANATEL, alertas INMET/CEMADEN, rios ANA, satélites D2C. Funciona sem internet.",
+      "SOS, mapas offline, última posição conhecida, alertas com cache e ferramentas de resiliência para operação com e sem rede.",
     type: "website",
     locale: "pt_BR",
     siteName: "Aussy Ontech",
@@ -81,8 +81,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Aussy Ontech — Emergência e satélites offline",
-    description: "SOS, WiFi grátis, torres ANATEL, alertas. Offline-first para o Brasil.",
+    title: "Aussy Ontech — Resiliência offline-first",
+    description: "SOS, mapas preparados para offline, cache de dados críticos e recuperação automática de rede.",
     images: ["/icon-512.png"],
   },
   robots: {
@@ -110,7 +110,7 @@ export const viewport: Viewport = {
   ],
   width: "device-width",
   initialScale: 1,
-  maximumScale: 5, // permite zoom para acessibilidade (WCAG)
+  maximumScale: 5,
   userScalable: true,
   viewportFit: "cover",
   colorScheme: "dark",
@@ -124,20 +124,14 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" suppressHydrationWarning className="dark">
       <head>
-        {/* iOS PWA — apple-touch-icon já vem do metadata */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="Aussy Ontech" />
-        {/* iOS Safari — permite standalone mode */}
         <meta name="mobile-web-app-capable" content="yes" />
-        {/* Android Chrome — cor da barra de status */}
         <meta name="theme-color" content="#0a0e14" />
-        {/* Microsoft Edge Sidebar */}
         <meta name="msapplication-TileColor" content="#0a0e14" />
-        {/* SEO local */}
         <meta name="geo.region" content="BR" />
         <meta name="geo.placename" content="Brasil" />
-        {/* Permissions Policy — sensores e geolocalização */}
         <meta
           httpEquiv="Permissions-Policy"
           content="geolocation=(self), microphone=(), camera=(), accelerometer=(self), gyroscope=(self), magnetometer=(self), ambient-light-sensor=(self)"
@@ -160,35 +154,48 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `
               if ('serviceWorker' in navigator) {
-                window.addEventListener('load', () => {
-                  navigator.serviceWorker.register('/sw.js', {
-                    scope: '/',
-                    updateViaCache: 'none',
-                  })
+                const hadController = Boolean(navigator.serviceWorker.controller);
+                let reloadingForUpdate = false;
+
+                const refreshOfflinePack = () => {
+                  if (!navigator.onLine) return;
+                  navigator.serviceWorker.ready
                     .then((reg) => {
-                      console.log('[Aussy] SW registrado:', reg.scope);
-                      // Força update quando nova versão disponível
-                      reg.addEventListener('updatefound', () => {
-                        const newWorker = reg.installing;
-                        if (newWorker) {
-                          newWorker.addEventListener('statechange', () => {
-                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                              console.log('[Aussy] Nova versão do SW disponível — recarregando...');
-                              newWorker.postMessage({ type: 'SKIP_WAITING' });
-                              setTimeout(() => window.location.reload(), 500);
-                            }
-                          });
-                        }
-                      });
+                      const worker = navigator.serviceWorker.controller || reg.active || reg.waiting;
+                      if (!worker) return;
+                      worker.postMessage({ type: 'PRECACHE_SHELL' });
+                      worker.postMessage({ type: 'PRECACHE_EMERGENCY' });
                     })
-                    .catch((err) => console.warn('[Aussy] SW falhou:', err));
+                    .catch(() => {});
+                };
+
+                navigator.serviceWorker.addEventListener('controllerchange', () => {
+                  if (hadController && !reloadingForUpdate) {
+                    reloadingForUpdate = true;
+                    window.location.reload();
+                  }
+                });
+
+                navigator.serviceWorker.register('/sw.js', {
+                  scope: '/',
+                  updateViaCache: 'none',
+                })
+                  .then((reg) => {
+                    console.log('[Aussy] SW registrado:', reg.scope);
+                    reg.update().catch(() => {});
+                    refreshOfflinePack();
+                  })
+                  .catch((err) => console.warn('[Aussy] SW falhou:', err));
+
+                window.addEventListener('online', () => {
+                  window.setTimeout(refreshOfflinePack, 750);
                 });
               }
-              // iOS standalone check — evita links externos abrirem Safari
+
               if (window.navigator.standalone === true) {
                 document.documentElement.classList.add('ios-standalone');
               }
-              // Detecta iPhone com notch/Dynamic Island
+
               if (/iPhone/.test(navigator.userAgent) && (window.screen.height >= 812 || window.screen.width >= 812)) {
                 document.documentElement.classList.add('ios-notch');
               }
