@@ -48,6 +48,16 @@ await assertFileContains('src/components/aussy/coverage-map.tsx', [
   'não devem orientar deslocamento, segurança ou decisão operacional',
 ])
 
+const coverageData = await assertFileContains('src/lib/data/coverage.ts', [
+  "const UNVERIFIED = 'não verificado nesta build'",
+  "referenceStatus: 'unverified-static'",
+  'verificar em fonte oficial antes de uso operacional',
+])
+
+for (const forbidden of ['~52.000 torres', '~48.000 torres', '~45.000 torres', "marketShare: '32%'", "marketShare: '30%'", "marketShare: '28%'"]) {
+  if (coverageData.includes(forbidden)) failures.push(`Coverage data contains unversioned statistic: ${forbidden}`)
+}
+
 const regulatory = await assertFileContains('src/components/aussy/regulatory-info.tsx', [
   'quality="static"',
   'confirme diretamente nas fontes oficiais',
