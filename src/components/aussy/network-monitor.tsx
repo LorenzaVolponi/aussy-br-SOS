@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { useNetworkStatus, useLatencyProbe, useDeviceCapabilities } from '@/hooks/use-network'
 import {
@@ -27,10 +26,28 @@ export function NetworkMonitor() {
   const [serverStatus, setServerStatus] = useState<any>(null)
 
   useEffect(() => {
-    fetch('/api/network/status', { cache: 'no-store' })
-      .then((r) => r.json())
+    if (!network.online) {
+      setServerStatus(null)
+      return
+    }
+
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => controller.abort(), 5000)
+
+    fetch('/api/network/status', { cache: 'no-store', signal: controller.signal })
+      .then((r) => {
+        const cached = r.headers.get('X-Aussy-Cached') === 'true' || r.headers.get('X-Aussy-Offline') === 'true'
+        if (!r.ok || cached) throw new Error('Status não é uma leitura de rede ao vivo')
+        return r.json()
+      })
       .then(setServerStatus)
       .catch(() => setServerStatus(null))
+      .finally(() => window.clearTimeout(timeout))
+
+    return () => {
+      window.clearTimeout(timeout)
+      controller.abort()
+    }
   }, [network.online])
 
   const quality = !network.online || isReachable === false
@@ -52,45 +69,32 @@ export function NetworkMonitor() {
 
   return (
     <div className="space-y-4">
-      {/* Status principal */}
       <Card className="glass-card border-signal/30">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-base">
-              {network.online ? (
-                <Wifi className="h-5 w-5 text-signal" />
-              ) : (
-                <WifiOff className="h-5 w-5 text-red-400 blink-emergency" />
-              )}
+              {network.online ? <Wifi className="h-5 w-5 text-signal" /> : <WifiOff className="h-5 w-5 text-red-400 blink-emergency" />}
               Status da Conexão
             </CardTitle>
             <Badge
               variant="outline"
-              className={
-                network.online
-                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                  : 'bg-red-500/10 text-red-400 border-red-500/30 blink-emergency'
-              }
+              className={network.online
+                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                : 'bg-red-500/10 text-red-400 border-red-500/30 blink-emergency'}
             >
               {network.online ? 'ONLINE' : 'OFFLINE'}
             </Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          {/* Qualidade visual */}
           <div>
             <div className="flex justify-between items-baseline mb-1.5">
-              <span className="text-xs text-muted-foreground font-mono-jet uppercase tracking-wider">
-                Qualidade do link
-              </span>
-              <span className={`font-mono-jet font-bold text-lg ${qualityColor}`}>
-                {qualityLabel}
-              </span>
+              <span className="text-xs text-muted-foreground font-mono-jet uppercase tracking-wider">Qualidade do link</span>
+              <span className={`font-mono-jet font-bold text-lg ${qualityColor}`}>{qualityLabel}</span>
             </div>
             <Progress value={quality} className="h-2" />
           </div>
 
-          {/* Métricas em grid */}
           <div className="grid grid-cols-2 gap-3 mt-3">
             <MetricCard
               icon={<Activity className="h-4 w-4" />}
@@ -118,8 +122,7 @@ export function NetworkMonitor() {
             />
           </div>
 
-          {/* IP externo detectado */}
-          {serverStatus?.externalIp && (
+          {network.online && serverStatus?.externalIp && (
             <div className="mt-3 pt-3 border-t border-border/50">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">IP externo detectado</span>
@@ -149,7 +152,6 @@ export function NetworkMonitor() {
         </CardContent>
       </Card>
 
-      {/* Capacidades do dispositivo */}
       <Card className="glass-card border-border/40">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
@@ -163,37 +165,37 @@ export function NetworkMonitor() {
               icon={<Satellite className="h-3.5 w-3.5" />}
               label="SOS via Satélite"
               active={caps.hasSatelliteSos}
-              hint={caps.hasSatelliteSos ? 'Dispositivo compatível' : 'Não suportado neste dispositivo'}
+              hint={caps.hasSatelliteSos ? 'Compatibilidade estimada pelo dispositivo; confirme no sistema operacional' : 'Não detectado por este navegador'}
             />
             <CapabilityChip
               icon={<Bluetooth className="h-3.5 w-3.5" />}
-              label="Bluetooth Mesh"
+              label="Bluetooth Web"
               active={caps.hasBluetooth}
-              hint={caps.hasBluetooth ? 'Web Bluetooth disponível' : 'Bluetooth não detectado'}
+              hint={caps.hasBluetooth ? 'Web Bluetooth disponível no navegador' : 'Web Bluetooth não exposto pelo navegador'}
             />
             <CapabilityChip
               icon={<MapPin className="h-3.5 w-3.5" />}
-              label="GPS"
+              label="Geolocalização"
               active={caps.hasGeolocation}
-              hint={caps.hasGeolocation ? 'Geolocalização disponível' : 'GPS indisponível'}
+              hint={caps.hasGeolocation ? 'API de geolocalização disponível' : 'API de geolocalização indisponível'}
             />
             <CapabilityChip
               icon={<Radio className="h-3.5 w-3.5" />}
-              label="Cell Broadcast"
+              label="Dispositivo móvel"
               active={caps.hasCellBroadcast}
-              hint={caps.hasCellBroadcast ? 'Recebe alertas do governo' : 'Não detectado'}
+              hint={caps.hasCellBroadcast ? 'Dispositivo móvel detectado; Cell Broadcast depende do sistema e operadora' : 'Navegador não indica dispositivo móvel'}
             />
             <CapabilityChip
               icon={<Activity className="h-3.5 w-3.5" />}
               label="Service Worker"
               active={caps.hasServiceWorker}
-              hint={caps.hasServiceWorker ? 'Funciona offline' : 'Sem suporte offline'}
+              hint={caps.hasServiceWorker ? 'Tecnologia de cache offline suportada' : 'Sem suporte a Service Worker'}
             />
             <CapabilityChip
               icon={<Zap className="h-3.5 w-3.5" />}
               label="Background Sync"
               active={caps.hasBackgroundSync}
-              hint={caps.hasBackgroundSync ? 'Sincroniza em background' : 'Não suportado'}
+              hint={caps.hasBackgroundSync ? 'Background Sync exposto pelo navegador' : 'Não suportado; recuperação online continua pelo evento online'}
             />
           </div>
 
@@ -209,17 +211,7 @@ export function NetworkMonitor() {
   )
 }
 
-function MetricCard({
-  icon,
-  label,
-  value,
-  color,
-}: {
-  icon: React.ReactNode
-  label: string
-  value: string
-  color: string
-}) {
+function MetricCard({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: string; color: string }) {
   return (
     <div className="rounded-lg bg-secondary/30 p-2.5 border border-border/30">
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
@@ -231,24 +223,12 @@ function MetricCard({
   )
 }
 
-function CapabilityChip({
-  icon,
-  label,
-  active,
-  hint,
-}: {
-  icon: React.ReactNode
-  label: string
-  active: boolean
-  hint: string
-}) {
+function CapabilityChip({ icon, label, active, hint }: { icon: React.ReactNode; label: string; active: boolean; hint: string }) {
   return (
     <div
-      className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs border ${
-        active
-          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-          : 'bg-muted/30 border-border/30 text-muted-foreground'
-      }`}
+      className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs border ${active
+        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+        : 'bg-muted/30 border-border/30 text-muted-foreground'}`}
       title={hint}
     >
       {icon}
