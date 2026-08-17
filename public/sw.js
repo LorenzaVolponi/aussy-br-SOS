@@ -1,11 +1,11 @@
-// Aussy Ontech Service Worker v8 — boot offline verificável e recuperação de rede
+// Aussy Ontech Service Worker v8 — cold boot offline + cache seguro + recovery
 
 const CACHE_VERSION = 'aussy-v8';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const EMERGENCY_CACHE = `${CACHE_VERSION}-emergency`;
 const SATELLITE_CACHE = `${CACHE_VERSION}-satellites`;
-const OSM_TILES_CACHE = 'aussy-v2-osm-tiles'; // estável entre versões para preservar mapas baixados
+const OSM_TILES_CACHE = 'aussy-v2-osm-tiles'; // nome estável: preserva mapas entre upgrades
 
 const APP_SHELL = [
   '/',
@@ -41,12 +41,42 @@ const EMERGENCY_PRECACHE = [
   '/api/geocode?lat=-15.7801&lon=-47.9292',
 ];
 
-function isCacheable(response) {
-  return !!response && (response.ok || response.type === 'opaque');
+function isCacheableResponse(response) {
+  return Boolean(response) && (response.ok || response.type === 'opaque');
+}
+
+async function responseIsLiveAndUsable(response) {
+  if (!response || !response.ok) return false;
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) return true;
+
+  try {
+    const payload = await response.clone().json();
+    if (!payload || typeof payload !== 'object') return true;
+    if (payload.error || payload.erro) return false;
+    if (payload.offline === true) return false;
+    if (payload.dataQuality === 'unavailable') return false;
+
+    // Algumas rotas possuem dados locais oficiais/de referência seguros mesmo sem
+    // telemetria ao vivo. Outras respostas `online:false` são degradação e não
+    // devem apagar a última cópia real.
+    if (payload.online === false) {
+      const safeOfflineQuality = new Set([
+        'official-channels-only',
+        'reference-location-only',
+        'official-portal',
+      ]);
+      if (!safeOfflineQuality.has(payload.dataQuality)) return false;
+    }
+
+    return true;
+  } catch {
+    return true;
+  }
 }
 
 async function putSafe(cacheName, request, response) {
-  if (!isCacheable(response)) return false;
+  if (!isCacheableResponse(response)) return false;
   try {
     const cache = await caches.open(cacheName);
     await cache.put(request, response.clone());
@@ -88,27 +118,20 @@ async function precacheShell() {
     console.warn('[SW] Falha ao preparar HTML principal:', error);
   }
 
-  const shellUrls = [...new Set([...APP_SHELL.filter((url) => url !== '/'), ...nextAssets])];
-  for (const url of shellUrls) {
-    try {
-      const response = await fetch(url, { cache: 'reload' });
-      if (isCacheable(response)) {
-        await staticCache.put(url, response.clone());
-        succeeded += 1;
-      } else {
-        failed.push(url);
-      }
-    } catch {
-      failed.push(url);
-    }
-  }
+  const urls = [...new Set([...APP_SHELL.filter((url) => url !== '/'), ...nextAssets])];
+  const results = await Promise.allSettled(urls.map(async (url) => {
+    const response = await fetch(url, { cache: 'reload' });
+    if (!isCacheableResponse(response)) throw new Error(`HTTP ${response.status}`);
+    await staticCache.put(url, response.clone());
+    return url;
+  }));
 
-  return {
-    ok: failed.length === 0 && succeeded > 0,
-    total: shellUrls.length + 1,
-    succeeded,
-    failed,
-  };
+  results.forEach((result, index) => {
+    if (result.status === 'fulfilled') succeeded += 1;
+    else failed.push(urls[index]);
+  });
+
+  return { ok: failed.length === 0 && succeeded > 0, total: urls.length + 1, succeeded, failed };
 }
 
 async function precacheEmergency() {
@@ -116,26 +139,21 @@ async function precacheEmergency() {
   const failed = [];
   let succeeded = 0;
 
-  for (const url of EMERGENCY_PRECACHE) {
-    try {
-      const response = await fetch(url, { cache: 'no-store' });
-      if (response.ok) {
-        await cache.put(url, response.clone());
-        succeeded += 1;
-      } else {
-        failed.push(url);
-      }
-    } catch {
-      failed.push(url);
+  const results = await Promise.allSettled(EMERGENCY_PRECACHE.map(async (url) => {
+    const response = await fetch(url, { cache: 'no-store' });
+    if (!(await responseIsLiveAndUsable(response))) {
+      throw new Error(`Recurso degradado: ${url}`);
     }
-  }
+    await cache.put(url, response.clone());
+    return url;
+  }));
 
-  return {
-    ok: failed.length === 0,
-    total: EMERGENCY_PRECACHE.length,
-    succeeded,
-    failed,
-  };
+  results.forEach((result, index) => {
+    if (result.status === 'fulfilled') succeeded += 1;
+    else failed.push(EMERGENCY_PRECACHE[index]);
+  });
+
+  return { ok: failed.length === 0, total: EMERGENCY_PRECACHE.length, succeeded, failed };
 }
 
 async function currentCachesReady() {
@@ -151,19 +169,68 @@ async function currentCachesReady() {
     }
   });
   const emergency = await emergencyCache.match('/api/emergency/contacts');
-  return { shell: !!root && hasNextAsset, emergency: !!emergency };
+  return { shell: Boolean(root) && hasNextAsset, emergency: Boolean(emergency) };
 }
 
 function cachedResponseWithHeaders(response, extra = {}) {
   if (!response || response.type === 'opaque') return response;
   const headers = new Headers(response.headers);
   headers.set('X-Aussy-Cached', 'true');
-  for (const [key, value] of Object.entries(extra)) headers.set(key, value);
+  for (const [key, value] of Object.entries(extra)) headers.set(key, String(value));
   return new Response(response.clone().body, {
     status: response.status,
     statusText: response.statusText,
     headers,
   });
+}
+
+function jsonResponse(payload, status = 503) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Aussy-Offline': 'true',
+      'Cache-Control': 'no-store',
+    },
+  });
+}
+
+function offlineApiResponse(url) {
+  const path = url.pathname;
+  const now = new Date().toISOString();
+
+  if (path === '/api/network/status') {
+    return jsonResponse({ online: false, latency: null, externalIp: null, isp: null, country: null, geo: null, error: 'offline', offline: true, timestamp: now });
+  }
+
+  if (path.startsWith('/api/coverage/towers')) {
+    const lat = Number(url.searchParams.get('lat') || -15.7801);
+    const lon = Number(url.searchParams.get('lon') || -47.9292);
+    const radius = Number(url.searchParams.get('radius') || 50);
+    return jsonResponse({
+      observer: { lat, lon, radius },
+      timestamp: now,
+      source: 'offline — sem cópia local para esta consulta',
+      dataQuality: { towers: 'unavailable', wifiPoints: 'unavailable' },
+      wifiPoints: [], wifiTotal: 0, towers: [], towersTotal: 0, byOperator: [],
+      note: 'Sem dados de cobertura em cache para estas coordenadas.', error: 'offline', offline: true,
+    });
+  }
+
+  if (path.startsWith('/api/inmet/alerts')) return jsonResponse({ alerts: [], total: 0, cached: false, error: 'offline', offline: true, fetchedAt: now });
+  if (path.startsWith('/api/inmet/stations')) return jsonResponse({ online: false, fonte: 'offline — sem cache', total_estacoes: 0, proximas: [], atualizado_em: now, error: 'offline', offline: true });
+  if (path.startsWith('/api/cemaden')) return jsonResponse({ alerts: [], total: 0, error: 'offline', offline: true, dataQuality: 'unavailable', fetchedAt: now });
+  if (path.startsWith('/api/queimadas')) return jsonResponse({ focos: [], total: 0, error: 'offline', offline: true, dataQuality: 'unavailable', fetchedAt: now });
+  if (path.startsWith('/api/earthquakes')) return jsonResponse({ events: [], total: 0, error: 'offline', offline: true, dataQuality: 'unavailable', queriedAt: now });
+  if (path.startsWith('/api/eonet')) return jsonResponse({ events: [], total: 0, error: 'offline', offline: true, queriedAt: now });
+  if (path.startsWith('/api/cptec/forecast')) return jsonResponse({ city: null, days: [], total: 0, error: 'offline', offline: true, dataQuality: 'unavailable', queriedAt: now });
+  if (path.startsWith('/api/cptec/satellite')) return jsonResponse({ online: false, dataQuality: 'official-portal', fonte: 'CPTEC/INPE', imagens: [], pagina_base: 'https://sigma.cptec.inpe.br/', aviso: 'Sem conexão para abrir o portal oficial.', offline: true });
+  if (path.startsWith('/api/ana')) return jsonResponse({ online: false, dataQuality: 'reference-location-only', total: 0, estacoes: [], atualizado_em: null, error: 'offline', offline: true });
+  if (path.startsWith('/api/ibge')) return jsonResponse({ online: false, municipios: [], total: 0, atualizado_em: now, error: 'offline', offline: true });
+  if (path.startsWith('/api/defesacivil')) return jsonResponse({ online: false, dataQuality: 'official-channels-only', emergencia_numero: '199', alertas: [], contatos: [], error: 'offline', offline: true });
+  if (path.startsWith('/api/geocode')) return jsonResponse({ city: null, region: null, country: null, error: 'offline', offline: true });
+
+  return jsonResponse({ error: 'offline', cached: false, offline: true });
 }
 
 async function cacheFirst(request, cacheName) {
@@ -181,16 +248,28 @@ async function cacheFirst(request, cacheName) {
 async function networkFirst(request, cacheName, fallback) {
   try {
     const response = await fetch(request);
-    if (response.ok) await putSafe(cacheName, request, response);
+    const usable = await responseIsLiveAndUsable(response);
+
+    if (usable) {
+      await putSafe(cacheName, request, response);
+      return response;
+    }
+
+    // Uma resposta vazia/degradada da origem NÃO apaga o último dado bom.
+    const cached = await caches.match(request);
+    if (cached) {
+      return cachedResponseWithHeaders(cached, {
+        'X-Aussy-Offline': 'true',
+        'X-Aussy-Upstream-Degraded': 'true',
+      });
+    }
+
     return response;
   } catch {
     const cached = await caches.match(request);
     if (cached) return cachedResponseWithHeaders(cached, { 'X-Aussy-Offline': 'true' });
     if (fallback) return fallback();
-    return new Response(JSON.stringify({ error: 'offline', cached: false }), {
-      status: 503,
-      headers: { 'Content-Type': 'application/json', 'X-Aussy-Offline': 'true' },
-    });
+    return offlineApiResponse(new URL(request.url));
   }
 }
 
@@ -207,27 +286,21 @@ async function emergencyFallback(request) {
     }
   }
 
-  return new Response(JSON.stringify({
+  return jsonResponse({
     error: 'offline',
     message: 'Sem conexão e sem cópia local para este recurso.',
     emergencyNumbers: [
       { number: '192', name: 'SAMU' },
-      { number: '190', name: 'Polícia' },
+      { number: '190', name: 'Polícia Militar' },
       { number: '193', name: 'Bombeiros' },
       { number: '199', name: 'Defesa Civil' },
     ],
-  }), {
-    status: 503,
-    headers: { 'Content-Type': 'application/json', 'X-Aussy-Offline': 'true' },
   });
 }
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
-    const [shell, emergency] = await Promise.all([
-      precacheShell(),
-      precacheEmergency(),
-    ]);
+    const [shell, emergency] = await Promise.all([precacheShell(), precacheEmergency()]);
     console.log('[SW] Install v8', { shell, emergency });
     await self.skipWaiting();
   })());
@@ -238,9 +311,6 @@ self.addEventListener('activate', (event) => {
     const readiness = await currentCachesReady();
     const keys = await caches.keys();
 
-    // Só remove versões anteriores quando a nova versão consegue iniciar offline
-    // E possui ao menos o contato de emergência básico. Caso contrário, mantém
-    // a versão anterior como rede de segurança.
     if (readiness.shell && readiness.emergency) {
       await Promise.all(
         keys
@@ -248,7 +318,7 @@ self.addEventListener('activate', (event) => {
           .map((k) => caches.delete(k))
       );
     } else {
-      console.warn('[SW] v8 ativado parcialmente; caches anteriores preservados', readiness);
+      console.warn('[SW] v8 parcial; caches anteriores preservados', readiness);
     }
 
     await self.clients.claim();
@@ -263,7 +333,6 @@ self.addEventListener('fetch', (event) => {
   if (!url.protocol.startsWith('http')) return;
   if (url.pathname.startsWith('/_next/webpack-hmr')) return;
 
-  // Tiles OpenStreetMap: cache-first e sem headers proibidos pelo navegador.
   if (
     url.hostname === 'tile.openstreetmap.org' ||
     url.hostname === 'a.tile.openstreetmap.org' ||
@@ -274,13 +343,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Imagens externas CPTEC/INPE: cache-first; respostas opacas também são cacheáveis.
   if (url.hostname.includes('cptec.inpe.br') || url.hostname.includes('satellite1.cptec')) {
     event.respondWith(cacheFirst(request, RUNTIME_CACHE));
     return;
   }
 
-  // Navegação: busca versão nova online; offline usa a URL exata ou o app shell.
   if (request.mode === 'navigate' || (request.headers.get('accept') || '').includes('text/html')) {
     event.respondWith((async () => {
       try {
@@ -308,23 +375,20 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (url.origin === self.location.origin && url.pathname.startsWith('/api/satellites')) {
-    event.respondWith(networkFirst(request, SATELLITE_CACHE, () => new Response(JSON.stringify({
-      error: 'offline',
-      satellites: [],
-      total: 0,
-      visible: 0,
-      fallback: true,
-      message: 'Sem TLE cacheado para esta consulta.',
-    }), { status: 503, headers: { 'Content-Type': 'application/json', 'X-Aussy-Offline': 'true' } })));
+    event.respondWith(networkFirst(request, SATELLITE_CACHE, () => {
+      if (url.pathname.includes('/passes')) {
+        return jsonResponse({ passes: [], total: 0, error: 'offline', offline: true, fallback: true });
+      }
+      return jsonResponse({ satellites: [], total: 0, visible: 0, error: 'offline', offline: true, fallback: true });
+    }));
     return;
   }
 
   if (url.origin === self.location.origin && url.pathname.startsWith('/api/')) {
-    event.respondWith(networkFirst(request, RUNTIME_CACHE));
+    event.respondWith(networkFirst(request, RUNTIME_CACHE, () => offlineApiResponse(url)));
     return;
   }
 
-  // Assets locais, inclusive chunks JS/CSS/fontes do Next: cache-first.
   if (url.origin === self.location.origin) {
     event.respondWith(cacheFirst(request, STATIC_CACHE));
   }
@@ -345,18 +409,12 @@ self.addEventListener('message', (event) => {
   }
 
   if (data.type === 'PRECACHE_SHELL') {
-    event.waitUntil((async () => {
-      const report = await precacheShell();
-      reply(event, report);
-    })());
+    event.waitUntil((async () => reply(event, await precacheShell()))());
     return;
   }
 
   if (data.type === 'PRECACHE_EMERGENCY') {
-    event.waitUntil((async () => {
-      const report = await precacheEmergency();
-      reply(event, report);
-    })());
+    event.waitUntil((async () => reply(event, await precacheEmergency()))());
     return;
   }
 
@@ -370,9 +428,7 @@ self.addEventListener('message', (event) => {
 });
 
 self.addEventListener('periodicsync', (event) => {
-  if (event.tag === 'aussy-refresh') {
-    event.waitUntil(precacheEmergency());
-  }
+  if (event.tag === 'aussy-refresh') event.waitUntil(precacheEmergency());
 });
 
-console.log('[SW] Aussy Ontech v8 — offline shell + recovery');
+console.log('[SW] Aussy Ontech v8 — cold boot + last-known-good cache + recovery');
