@@ -22,7 +22,7 @@ export async function GET(request: Request) {
   const radius = parseFloat(searchParams.get('radius') || '50') // km
   const operator = searchParams.get('operator') // 'vivo', 'claro', 'tim'
 
-  // Pontos WiFi públicos próximos
+  // Pontos WiFi do catálogo demonstrativo próximos ao observador.
   const wifiNear = WIFI_PUBLIC_POINTS
     .map((p) => ({
       ...p,
@@ -31,8 +31,8 @@ export async function GET(request: Request) {
     .filter((p) => p.distance <= radius)
     .sort((a, b) => a.distance - b.distance)
 
-  // Torres simuladas (realmente existem, mas base completa da ANATEL tem 200k+ torres — pesada)
-  // Gera torres ao redor baseado nas operadoras reais
+  // IMPORTANTE: posições abaixo são sintéticas e servem apenas para demonstrar
+  // a experiência de visualização. Elas NÃO representam ERBs reais da ANATEL.
   interface Tower {
     id: string
     operator: string
@@ -44,32 +44,31 @@ export async function GET(request: Request) {
     source: string
   }
   const towers: Tower[] = []
-  const numTowers = 25 // mock representativo
+  const numTowers = 25
   for (let i = 0; i < numTowers; i++) {
     const angle = (i / numTowers) * 2 * Math.PI
     const distance = 0.5 + Math.random() * 8 // 0.5-8.5 km
     const towerLat = lat + (distance / 111) * Math.cos(angle)
     const towerLon = lon + (distance / (111 * Math.cos(lat * Math.PI / 180))) * Math.sin(angle)
 
-    const opIndex = Math.floor(Math.random() * 3) // 3 principais
+    const opIndex = Math.floor(Math.random() * 3)
     const op = BRAZIL_OPERATORS[opIndex]
     const techs = ['4G LTE', '4G LTE', '4G LTE', '5G NR', '3G UMTS']
 
     towers.push({
-      id: `erb-${i}`,
+      id: `sim-erb-${i}`,
       operator: op.name,
       technology: techs[Math.floor(Math.random() * techs.length)],
       distance,
       lat: towerLat,
       lon: towerLon,
       estimated: true,
-      source: 'Base ANATEL ERB-Web (representativa)',
+      source: 'Simulação demonstrativa — não é localização oficial de ERB',
     })
   }
 
   towers.sort((a, b) => a.distance - b.distance)
 
-  // Estatísticas por operadora
   const byOperator = BRAZIL_OPERATORS.map((op) => {
     const count = towers.filter((t) => t.operator === op.name).length
     return {
@@ -77,18 +76,23 @@ export async function GET(request: Request) {
       color: op.color,
       towers: count,
       closest: towers.find((t) => t.operator === op.name)?.distance || null,
+      estimated: true,
     }
   })
 
   return NextResponse.json({
     observer: { lat, lon, radius },
     timestamp: new Date().toISOString(),
-    source: 'ANATEL ERB-Web + WiFi Grátis Brasil (gov.br)',
+    source: 'Aussy Ontech — simulação demonstrativa de ERBs; catálogo amostral de Wi-Fi público',
+    dataQuality: {
+      towers: 'synthetic',
+      wifiPoints: 'sample',
+    },
     wifiPoints: wifiNear,
     wifiTotal: wifiNear.length,
     towers: operator ? towers.filter((t) => t.operator.toLowerCase() === operator) : towers,
     towersTotal: towers.length,
     byOperator,
-    note: 'Para dados completos de torres (200k+), consulte https://www.gov.br/anatel/pt-br/dados/erbs',
+    note: 'As ERBs exibidas são simuladas e não devem ser usadas para decisão operacional. Para localização oficial, consulte a base ERB-Web da ANATEL.',
   })
 }

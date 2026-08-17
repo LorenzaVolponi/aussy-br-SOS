@@ -5,8 +5,8 @@
   "github": {
     "silent": false
   },
-  "buildCommand": "next build",
-  "installCommand": "bun install --frozen-lockfile",
+  "buildCommand": "bun run build",
+  "installCommand": "bun install",
   "headers": [
     {
       "source": "/sw.js",
