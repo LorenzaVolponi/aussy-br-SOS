@@ -6,7 +6,7 @@ const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const EMERGENCY_CACHE = `${CACHE_VERSION}-emergency`;
 const SATELLITE_CACHE = `${CACHE_VERSION}-satellites`;
-const OSM_TILES_CACHE = 'aussy-v2-osm-tiles'; // nome mantido para não invalidar cache existente
+const OSM_TILES_CACHE = 'aussy-v2-osm-tiles'; // nome estável: preserva mapas baixados entre upgrades do app
 const INMET_CACHE = `${CACHE_VERSION}-inmet`;
 const CEMADEN_CACHE = `${CACHE_VERSION}-cemaden`;
 const QUEIMADAS_CACHE = `${CACHE_VERSION}-queimadas`;
@@ -95,7 +95,9 @@ self.addEventListener('activate', (event) => {
       const keys = await caches.keys();
       await Promise.all(
         keys
-          .filter((k) => !k.startsWith(CACHE_VERSION))
+          // O cache de tiles é deliberadamente estável para não apagar mapas offline
+          // já baixados pelo usuário quando a versão do service worker muda.
+          .filter((k) => !k.startsWith(CACHE_VERSION) && k !== OSM_TILES_CACHE)
           .map((k) => caches.delete(k))
       );
       await self.clients.claim();
