@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start -p 3000",
     "lint": "eslint .",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "verify:repo": "node scripts/verify-repo.mjs"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.11",
