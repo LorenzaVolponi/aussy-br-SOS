@@ -4,6 +4,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
+import { OfflineChunkWarmer } from "@/components/aussy/offline-chunk-warmer";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
@@ -147,6 +148,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           {children}
+          <OfflineChunkWarmer />
           <Toaster />
           <SonnerToaster position="top-center" />
         </ThemeProvider>
