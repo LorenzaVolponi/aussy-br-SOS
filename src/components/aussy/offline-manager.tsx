@@ -23,10 +23,58 @@ import {
 
 interface CacheStatus {
   swRegistered: boolean
+  swControlling: boolean
   cacheSize: number
   cacheKeys: string[]
   precached: boolean
-  lastUpdate: string | null
+  shellReady: boolean
+}
+
+interface WorkerReport {
+  ok: boolean
+  total?: number
+  succeeded?: number
+  failed?: string[]
+  message?: string
+}
+
+async function ensureServiceWorker() {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+    throw new Error('Service Worker não suportado neste navegador')
+  }
+
+  let registration = await navigator.serviceWorker.getRegistration('/')
+  if (!registration) {
+    registration = await navigator.serviceWorker.register('/sw.js', {
+      scope: '/',
+      updateViaCache: 'none',
+    })
+  }
+
+  const ready = await navigator.serviceWorker.ready
+  return ready
+}
+
+async function sendWorkerCommand(type: 'PRECACHE_SHELL' | 'PRECACHE_EMERGENCY'): Promise<WorkerReport> {
+  const registration = await ensureServiceWorker()
+  const worker = navigator.serviceWorker.controller || registration.active || registration.waiting
+  if (!worker) throw new Error('Service Worker ainda não está ativo')
+
+  return new Promise<WorkerReport>((resolve, reject) => {
+    const channel = new MessageChannel()
+    const timeout = window.setTimeout(() => {
+      channel.port1.close()
+      reject(new Error(`Timeout no comando ${type}`))
+    }, 30000)
+
+    channel.port1.onmessage = (event) => {
+      window.clearTimeout(timeout)
+      channel.port1.close()
+      resolve(event.data as WorkerReport)
+    }
+
+    worker.postMessage({ type }, [channel.port2])
+  })
 }
 
 export function OfflineManager() {
@@ -35,8 +83,9 @@ export function OfflineManager() {
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null)
   const [precaching, setPrecaching] = useState(false)
   const [precacheProgress, setPrecacheProgress] = useState(0)
+  const [preparingAll, setPreparingAll] = useState(false)
+  const [prepareStep, setPrepareStep] = useState('')
 
-  // Detectar PWA install prompt
   useEffect(() => {
     if (typeof window === 'undefined') return
 
@@ -46,17 +95,15 @@ export function OfflineManager() {
     }
     window.addEventListener('beforeinstallprompt', handler)
 
-    // Detecta se já está instalado (standalone)
     const standalone = window.matchMedia('(display-mode: standalone)').matches ||
-                       (navigator as any).standalone === true
+      (navigator as any).standalone === true
     setIsInstalled(standalone)
 
-    // Detecta install完成
     const installedHandler = () => {
       setIsInstalled(true)
       setInstallPrompt(null)
       toast.success('Aussy Ontech instalado!', {
-        description: 'Agora funciona 100% offline.',
+        description: 'O app está disponível pela tela inicial; os recursos preparados ficam acessíveis sem rede.',
       })
     }
     window.addEventListener('appinstalled', installedHandler)
@@ -67,12 +114,11 @@ export function OfflineManager() {
     }
   }, [])
 
-  // Verificar status do cache
   const checkCacheStatus = useCallback(async () => {
-    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('caches' in window)) return
 
     try {
-      const reg = await navigator.serviceWorker.getRegistration()
+      const reg = await navigator.serviceWorker.getRegistration('/')
       const cacheNames = await caches.keys()
       const aussyCaches = cacheNames.filter((k) => k.startsWith('aussy-'))
 
@@ -85,20 +131,24 @@ export function OfflineManager() {
           keys.push(req.url)
           try {
             const res = await cache.match(req)
-            if (res) {
-              const blob = await res.blob()
-              totalSize += blob.size
-            }
-          } catch {}
+            if (res) totalSize += (await res.blob()).size
+          } catch {
+            // Algumas respostas opacas não expõem tamanho; ainda contam como cacheadas.
+          }
         }
       }
 
+      const hasRoot = keys.some((k) => new URL(k).pathname === '/')
+      const hasNextAsset = keys.some((k) => new URL(k).pathname.startsWith('/_next/static/'))
+      const hasEmergency = keys.some((k) => new URL(k).pathname.startsWith('/api/emergency/'))
+
       setCacheStatus({
         swRegistered: !!reg,
+        swControlling: !!navigator.serviceWorker.controller,
         cacheSize: totalSize,
         cacheKeys: keys,
-        precached: keys.some((k) => k.includes('/api/emergency')),
-        lastUpdate: reg?.active?.scriptURL ? new Date().toISOString() : null,
+        precached: hasEmergency,
+        shellReady: hasRoot && hasNextAsset,
       })
     } catch (e) {
       console.error('Erro verificando cache:', e)
@@ -106,12 +156,11 @@ export function OfflineManager() {
   }, [])
 
   useEffect(() => {
-    checkCacheStatus()
-    const interval = setInterval(checkCacheStatus, 10000)
-    return () => clearInterval(interval)
+    void checkCacheStatus()
+    const interval = window.setInterval(() => void checkCacheStatus(), 10000)
+    return () => window.clearInterval(interval)
   }, [checkCacheStatus])
 
-  // Instalar PWA
   const handleInstall = async () => {
     if (!installPrompt) {
       toast.info('Instalação manual', {
@@ -121,164 +170,124 @@ export function OfflineManager() {
     }
     installPrompt.prompt()
     const choice = await installPrompt.userChoice
-    if (choice.outcome === 'accepted') {
-      setInstallPrompt(null)
-    }
+    if (choice.outcome === 'accepted') setInstallPrompt(null)
   }
 
-  // Pré-cachear emergência manualmente
   const handlePrecache = async () => {
     setPrecaching(true)
-    setPrecacheProgress(0)
-    const urls = [
-      '/api/emergency/contacts',
-      '/api/emergency/first-aid',
-      '/api/coverage/towers',
-      '/api/satellites/tle?group=starlink&limit=20',
-      '/api/satellites/tle?group=iridium&limit=20',
-      '/',
-      '/manifest.json',
-    ]
+    setPrecacheProgress(10)
+    try {
+      const shell = await sendWorkerCommand('PRECACHE_SHELL')
+      setPrecacheProgress(55)
+      const emergency = await sendWorkerCommand('PRECACHE_EMERGENCY')
+      setPrecacheProgress(100)
 
-    let done = 0
-    for (const url of urls) {
-      try {
-        const res = await fetch(url, { cache: 'reload' })
-        if (res.ok) {
-          const cache = await caches.open('aussy-v2-emergency')
-          await cache.put(url, res.clone())
-        }
-      } catch (e) {
-        console.warn('Falha cacheando', url)
+      const failed = [...(shell.failed || []), ...(emergency.failed || [])]
+      if (shell.ok && emergency.ok) {
+        toast.success('Pacote offline preparado!', {
+          description: `${(shell.succeeded || 0) + (emergency.succeeded || 0)} recursos verificados no cache.`,
+        })
+      } else {
+        toast.warning('Pacote offline preparado parcialmente', {
+          description: `${failed.length} recurso(s) não puderam ser atualizado(s). O cache anterior foi preservado.`,
+        })
       }
-      done++
-      setPrecacheProgress((done / urls.length) * 100)
+    } catch (e) {
+      toast.error('Não foi possível preparar o modo offline', {
+        description: e instanceof Error ? e.message : 'Falha inesperada',
+      })
+    } finally {
+      setPrecaching(false)
+      window.setTimeout(() => setPrecacheProgress(0), 1800)
+      void checkCacheStatus()
     }
-
-    setPrecaching(false)
-    setPrecacheProgress(100)
-    toast.success('Dados offline prontos!', {
-      description: `${urls.length} recursos críticos cacheados. App funciona sem internet.`,
-    })
-    setTimeout(() => setPrecacheProgress(0), 2000)
-    checkCacheStatus()
   }
-
-  // PREPARAR TUDO OFFLINE — 1 toque: cacheia recursos + instala PWA + guia checklist
-  const [preparingAll, setPreparingAll] = useState(false)
-  const [prepareStep, setPrepareStep] = useState('')
 
   const handlePrepareAll = async () => {
     setPreparingAll(true)
-    setPrepareStep('Verificando service worker...')
-
-    // 1. Service Worker
     try {
-      const reg = await navigator.serviceWorker?.getRegistration()
-      if (!reg?.active && 'serviceWorker' in navigator) {
-        await navigator.serviceWorker.register('/sw.js')
-      }
-      await reg?.update?.()
-    } catch (e) {
-      console.warn('SW update falhou:', e)
-    }
+      setPrepareStep('Ativando Service Worker...')
+      const reg = await ensureServiceWorker()
+      await reg.update().catch(() => undefined)
 
-    // 2. Pré-cachear todas as APIs
-    setPrepareStep('Baixando contatos de emergência (SAMU, Polícia...)')
-    const urls = [
-      '/api/emergency/contacts',
-      '/api/emergency/first-aid',
-      '/api/coverage/towers',
-      '/api/satellites/tle?group=starlink&limit=20',
-      '/api/satellites/tle?group=iridium&limit=20',
-      '/api/satellites/tle?group=weather&limit=20',
-      '/api/satellites/tle?group=gnss&limit=20',
-      '/',
-      '/manifest.json',
-    ]
-    let done = 0
-    for (const url of urls) {
-      setPrepareStep(`Cacheando recurso ${done + 1}/${urls.length}`)
-      try {
-        const res = await fetch(url, { cache: 'reload' })
-        if (res.ok) {
-          const cache = await caches.open('aussy-v2-emergency')
-          await cache.put(url, res.clone())
-        }
-      } catch (e) {
-        console.warn('Falha cacheando', url)
-      }
-      done++
-    }
+      setPrepareStep('Preparando app shell e arquivos do Next.js...')
+      const shell = await sendWorkerCommand('PRECACHE_SHELL')
 
-    // 3. Pré-cachear estáticos (CSS/JS/ícones)
-    setPrepareStep('Cacheando ícones e assets...')
-    try {
-      const staticCache = await caches.open('aussy-v2-statics')
-      await staticCache.addAll([
-        '/icon-192.png',
-        '/icon-512.png',
-        '/icon-192.svg',
-        '/logo.svg',
-        '/manifest.json',
-      ]).catch(() => {})
-    } catch (e) {}
+      setPrepareStep('Atualizando dados críticos de emergência...')
+      const emergency = await sendWorkerCommand('PRECACHE_EMERGENCY')
 
-    // 4. Detectar GPS inicial (para ter posição salva antes de ficar sem sinal)
-    setPrepareStep('Adquirindo GPS inicial...')
-    try {
+      setPrepareStep('Salvando última posição conhecida...')
       await new Promise<void>((resolve) => {
         if (!('geolocation' in navigator)) return resolve()
         navigator.geolocation.getCurrentPosition(
+          (position) => {
+            try {
+              localStorage.setItem('aussy_last_location_v1', JSON.stringify({
+                lat: position.coords.latitude,
+                lon: position.coords.longitude,
+                accuracy: position.coords.accuracy,
+                source: 'gps',
+                timestamp: new Date(position.timestamp).toISOString(),
+              }))
+            } catch {}
+            resolve()
+          },
           () => resolve(),
-          () => resolve(),
-          { timeout: 5000, maximumAge: 60000 }
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
         )
       })
-    } catch (e) {}
 
-    // 5. PWA install prompt (se disponível)
-    setPrepareStep('Pronto!')
-    if (installPrompt) {
-      toast.success('Tudo pronto para offline!', {
-        description: 'Recomendamos instalar o app agora para acesso pela tela inicial.',
-        action: {
-          label: 'Instalar',
-          onClick: handleInstall,
-        },
-        duration: 8000,
+      await checkCacheStatus()
+      const failed = [...(shell.failed || []), ...(emergency.failed || [])]
+      setPrepareStep('Pronto')
+
+      if (!shell.ok || !emergency.ok) {
+        toast.warning('Offline preparado com pendências', {
+          description: `${failed.length} recurso(s) falharam na atualização; versões anteriores em cache foram mantidas quando disponíveis.`,
+          duration: 8000,
+        })
+      } else if (installPrompt) {
+        toast.success('Modo offline preparado!', {
+          description: 'App shell, dados críticos e última posição foram salvos. Instale o PWA para acesso rápido.',
+          action: { label: 'Instalar', onClick: handleInstall },
+          duration: 8000,
+        })
+      } else {
+        toast.success('Modo offline preparado!', {
+          description: 'App shell, dados críticos e última posição foram salvos.',
+        })
+      }
+    } catch (e) {
+      toast.error('Falha preparando o modo offline', {
+        description: e instanceof Error ? e.message : 'Falha inesperada',
       })
-    } else {
-      toast.success('Tudo pronto para offline!', {
-        description: 'App cacheado, GPS adquirido, contatos salvos. Funciona sem internet.',
-      })
+    } finally {
+      setPreparingAll(false)
+      setPrepareStep('')
+      void checkCacheStatus()
     }
-
-    setPreparingAll(false)
-    setPrepareStep('')
-    checkCacheStatus()
   }
 
-  // Limpar cache
   const handleClearCache = async () => {
-    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return
-    const reg = await navigator.serviceWorker.getRegistration()
-    if (reg?.active) {
-      reg.active.postMessage({ type: 'CLEAR_CACHE' })
-    }
+    if (typeof window === 'undefined' || !('caches' in window)) return
+    if (!window.confirm('Apagar todos os dados offline, incluindo mapas baixados?')) return
+
     const keys = await caches.keys()
-    await Promise.all(keys.map((k) => caches.delete(k)))
-    toast.success('Cache limpo', { description: 'Próximo acesso vai re-baixar dados frescos.' })
-    setTimeout(checkCacheStatus, 500)
+    await Promise.all(keys.filter((k) => k.startsWith('aussy-')).map((k) => caches.delete(k)))
+    toast.success('Cache offline apagado', { description: 'Use "Preparar tudo agora" antes de ficar sem rede.' })
+    window.setTimeout(() => void checkCacheStatus(), 300)
   }
 
-  // Forçar update do SW
   const handleUpdateSW = async () => {
-    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return
-    const reg = await navigator.serviceWorker.getRegistration()
-    if (reg) {
+    try {
+      const reg = await ensureServiceWorker()
       await reg.update()
-      toast.info('Verificando atualizações...')
+      toast.info('Service Worker atualizado/verificado')
+      void checkCacheStatus()
+    } catch (e) {
+      toast.error('Falha ao atualizar Service Worker', {
+        description: e instanceof Error ? e.message : 'Falha inesperada',
+      })
     }
   }
 
@@ -297,15 +306,13 @@ export function OfflineManager() {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* PREPARAR TUDO — botão 1 toque */}
         <div className="p-3 rounded-xl border border-signal/40 bg-gradient-to-br from-signal/15 to-signal/5">
           <div className="flex items-center gap-2 mb-2">
             <Zap className="h-4 w-4 text-signal" />
             <span className="text-sm font-bold">Preparar tudo offline com 1 toque</span>
           </div>
           <p className="text-[11px] text-muted-foreground mb-3 leading-relaxed">
-            Cacheia todos os dados críticos (contatos de emergência, primeiros socorros, satélites, torres),
-            ativa o service worker, adquire GPS e oferece instalar o app — tudo de uma vez.
+            Salva o app shell, arquivos JS/CSS do Next.js, dados críticos e a última posição GPS conhecida. Recursos que dependem de dados ao vivo continuam identificados como cache/offline quando a rede cair.
           </p>
 
           {preparingAll && (
@@ -317,70 +324,40 @@ export function OfflineManager() {
             </div>
           )}
 
-          <Button
-            onClick={handlePrepareAll}
-            disabled={preparingAll}
-            className="w-full h-10"
-            size="sm"
-          >
+          <Button onClick={handlePrepareAll} disabled={preparingAll} className="w-full h-10" size="sm">
             <Zap className="h-4 w-4 mr-1.5" />
             {preparingAll ? 'Preparando...' : 'Preparar tudo agora'}
           </Button>
         </div>
 
-        {/* Checklist de preparação */}
         <div className="p-3 rounded-lg border border-border/40 bg-background/30">
           <div className="flex items-center gap-2 mb-2">
             <ListChecks className="h-3.5 w-3.5 text-muted-foreground" />
             <span className="text-[11px] font-mono-jet text-muted-foreground">CHECKLIST OFFLINE</span>
           </div>
           <div className="space-y-1 text-[11px]">
-            <ChecklistItem
-              checked={cacheStatus?.swRegistered}
-              label="Service Worker ativo"
-            />
-            <ChecklistItem
-              checked={cacheStatus?.precached}
-              label="Dados de emergência em cache"
-            />
-            <ChecklistItem
-              checked={(cacheStatus?.cacheKeys.length ?? 0) >= 5}
-              label="Recursos suficientes cacheados"
-            />
-            <ChecklistItem
-              checked={isInstalled}
-              label="App instalado na tela inicial"
-            />
+            <ChecklistItem checked={cacheStatus?.swRegistered} label="Service Worker registrado" />
+            <ChecklistItem checked={cacheStatus?.swControlling} label="Página controlada pelo Service Worker" />
+            <ChecklistItem checked={cacheStatus?.shellReady} label="App shell + JS/CSS em cache" />
+            <ChecklistItem checked={cacheStatus?.precached} label="Dados de emergência em cache" />
+            <ChecklistItem checked={isInstalled} label="App instalado na tela inicial (opcional)" />
           </div>
         </div>
 
-        {/* Status grid */}
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div className="flex items-center gap-2 p-2 rounded bg-background/50">
-            {cacheStatus?.swRegistered ? (
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-            ) : (
-              <AlertCircle className="h-3.5 w-3.5 text-amber-400" />
-            )}
+            {cacheStatus?.swRegistered ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> : <AlertCircle className="h-3.5 w-3.5 text-amber-400" />}
             <div>
               <div className="font-mono-jet text-[10px] text-muted-foreground">SERVICE WORKER</div>
-              <div className="font-medium">
-                {cacheStatus?.swRegistered ? 'Ativo' : 'Pendente'}
-              </div>
+              <div className="font-medium">{cacheStatus?.swControlling ? 'Controlando' : cacheStatus?.swRegistered ? 'Registrado' : 'Pendente'}</div>
             </div>
           </div>
 
           <div className="flex items-center gap-2 p-2 rounded bg-background/50">
-            {cacheStatus?.precached ? (
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-            ) : (
-              <AlertCircle className="h-3.5 w-3.5 text-amber-400" />
-            )}
+            {cacheStatus?.precached ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> : <AlertCircle className="h-3.5 w-3.5 text-amber-400" />}
             <div>
               <div className="font-mono-jet text-[10px] text-muted-foreground">DADOS EMERGÊNCIA</div>
-              <div className="font-medium">
-                {cacheStatus?.precached ? 'Em cache' : 'Falta cache'}
-              </div>
+              <div className="font-medium">{cacheStatus?.precached ? 'Em cache' : 'Falta preparar'}</div>
             </div>
           </div>
 
@@ -401,89 +378,55 @@ export function OfflineManager() {
           </div>
         </div>
 
-        {/* Install button */}
         {isInstalled ? (
           <div className="flex items-center gap-2 p-2 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs">
             <Smartphone className="h-4 w-4" />
-            <span className="font-medium">App instalado e funcionando standalone</span>
+            <span className="font-medium">App instalado em modo standalone</span>
           </div>
         ) : (
-          <Button
-            onClick={handleInstall}
-            className="w-full"
-            size="sm"
-            disabled={!installPrompt}
-          >
+          <Button onClick={handleInstall} className="w-full" size="sm" disabled={!installPrompt}>
             <Download className="h-4 w-4 mr-1" />
             {installPrompt ? 'Instalar app (PWA)' : 'Instalação via menu do navegador'}
           </Button>
         )}
 
-        {/* Precache button */}
         {precaching && (
           <div className="space-y-1">
             <div className="flex justify-between text-[10px] text-muted-foreground font-mono-jet">
-              <span>Caching dados críticos...</span>
+              <span>Preparando recursos críticos...</span>
               <span>{Math.round(precacheProgress)}%</span>
             </div>
             <Progress value={precacheProgress} className="h-1.5" />
           </div>
         )}
 
-        <Button
-          onClick={handlePrecache}
-          variant="outline"
-          size="sm"
-          className="w-full border-signal/30 text-signal hover:bg-signal/10"
-          disabled={precaching}
-        >
+        <Button onClick={handlePrecache} variant="outline" size="sm" className="w-full border-signal/30 text-signal hover:bg-signal/10" disabled={precaching}>
           <WifiOff className="h-4 w-4 mr-1" />
-          {precaching ? 'Pré-cacheando...' : 'Baixar dados offline agora'}
+          {precaching ? 'Preparando...' : 'Baixar/atualizar dados offline agora'}
         </Button>
 
-        {/* Cache management */}
         <div className="grid grid-cols-2 gap-2">
-          <Button
-            onClick={handleUpdateSW}
-            variant="ghost"
-            size="sm"
-            className="text-xs h-7"
-          >
+          <Button onClick={handleUpdateSW} variant="ghost" size="sm" className="text-xs h-7">
             <RefreshCw className="h-3 w-3 mr-1" />
             Atualizar SW
           </Button>
-          <Button
-            onClick={handleClearCache}
-            variant="ghost"
-            size="sm"
-            className="text-xs h-7 text-red-400 hover:text-red-300"
-          >
+          <Button onClick={handleClearCache} variant="ghost" size="sm" className="text-xs h-7 text-red-400 hover:text-red-300">
             <Trash2 className="h-3 w-3 mr-1" />
             Limpar cache
           </Button>
         </div>
 
-        {/* Info */}
         <div className="text-[10px] text-muted-foreground leading-relaxed pt-2 border-t border-border/30">
-          <p className="mb-1">
-            <strong className="text-foreground">Como funciona offline:</strong>
-          </p>
+          <p className="mb-1"><strong className="text-foreground">Como funciona offline:</strong></p>
           <p>
-            Após o primeiro acesso online, o Service Worker cacheia o app shell + dados de emergência (SAMU, primeiros socorros, torres ANATEL, TLEs de satélites). Em sessões futuras sem internet, todo o app continua utilizável.
+            O Service Worker preserva o app shell, recursos estáticos e dados já preparados. Funções locais como SOS sonoro, números de emergência, guias, bússola e última posição conhecida continuam disponíveis; informações externas mostram cache ou indisponibilidade quando não houver cópia local.
           </p>
         </div>
 
-        {/* Quick test */}
-        <div className="flex gap-2 pt-2">
-          <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
-            v2 SW
-          </Badge>
-          <Badge variant="outline" className="text-[10px] bg-signal/10 text-signal border-signal/30">
-            Cache API
-          </Badge>
-          <Badge variant="outline" className="text-[10px] bg-orbit/10 text-orbit border-orbit/30">
-            Periodic Sync
-          </Badge>
+        <div className="flex gap-2 pt-2 flex-wrap">
+          <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30">SW resiliente</Badge>
+          <Badge variant="outline" className="text-[10px] bg-signal/10 text-signal border-signal/30">Cache API</Badge>
+          <Badge variant="outline" className="text-[10px] bg-orbit/10 text-orbit border-orbit/30">Recovery online</Badge>
         </div>
       </CardContent>
     </Card>
@@ -493,14 +436,8 @@ export function OfflineManager() {
 function ChecklistItem({ checked, label }: { checked?: boolean; label: string }) {
   return (
     <div className="flex items-center gap-2">
-      {checked ? (
-        <CheckCircle2 className="h-3 w-3 text-emerald-400 flex-shrink-0" />
-      ) : (
-        <div className="w-3 h-3 rounded-full border border-muted-foreground/40 flex-shrink-0" />
-      )}
-      <span className={checked ? 'text-foreground' : 'text-muted-foreground'}>
-        {label}
-      </span>
+      {checked ? <CheckCircle2 className="h-3 w-3 text-emerald-400 flex-shrink-0" /> : <div className="w-3 h-3 rounded-full border border-muted-foreground/40 flex-shrink-0" />}
+      <span className={checked ? 'text-foreground' : 'text-muted-foreground'}>{label}</span>
     </div>
   )
 }
