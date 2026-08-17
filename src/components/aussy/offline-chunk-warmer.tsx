@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 
 const WARM_VERSION = 'aussy-offline-modules-v8'
+const LOCATION_STORAGE_KEY = 'aussy_last_location_v1'
 
 async function waitForController(timeoutMs = 10000) {
   if (!('serviceWorker' in navigator)) return false
@@ -64,6 +65,37 @@ async function warmModules() {
   return failed === 0
 }
 
+async function precacheCurrentLocation() {
+  if (!navigator.serviceWorker.controller || !('geolocation' in navigator)) return
+
+  await new Promise<void>((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const location = {
+          lat: position.coords.latitude,
+          lon: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+          source: 'gps',
+          timestamp: new Date(position.timestamp).toISOString(),
+        }
+
+        try {
+          localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(location))
+        } catch {}
+
+        navigator.serviceWorker.controller?.postMessage({
+          type: 'PRECACHE_LOCATION',
+          lat: location.lat,
+          lon: location.lon,
+        })
+        resolve()
+      },
+      () => resolve(),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+    )
+  })
+}
+
 export function OfflineChunkWarmer() {
   useEffect(() => {
     if (!navigator.onLine || !('serviceWorker' in navigator)) return
@@ -71,14 +103,16 @@ export function OfflineChunkWarmer() {
     let cancelled = false
 
     const run = async () => {
-      try {
-        const alreadyWarm = localStorage.getItem(WARM_VERSION)
-        if (alreadyWarm) return
-      } catch {}
-
       const controlled = await waitForController()
       if (!controlled || cancelled || !navigator.onLine) return
-      await warmModules()
+
+      let alreadyWarm = false
+      try {
+        alreadyWarm = Boolean(localStorage.getItem(WARM_VERSION))
+      } catch {}
+
+      if (!alreadyWarm) await warmModules()
+      if (!cancelled && navigator.onLine) await precacheCurrentLocation()
     }
 
     const timer = window.setTimeout(() => void run(), 1200)
