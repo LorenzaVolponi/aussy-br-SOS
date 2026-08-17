@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { DataProvenance } from '@/components/aussy/data-provenance'
 import {
   MapPin,
   Wifi,
@@ -15,7 +16,6 @@ import {
   School,
   BookOpen,
   Cross,
-  CircleDot,
 } from 'lucide-react'
 import { BRAZIL_OPERATORS } from '@/lib/data/coverage'
 
@@ -23,6 +23,10 @@ interface CoverageData {
   observer: { lat: number; lon: number; radius: number }
   timestamp: string
   source: string
+  dataQuality: {
+    towers: 'synthetic'
+    wifiPoints: 'sample'
+  }
   wifiPoints: any[]
   wifiTotal: number
   towers: any[]
@@ -51,20 +55,24 @@ export function CoverageMap({ observerLat, observerLon }: { observerLat: number;
   const [data, setData] = useState<CoverageData | null>(null)
   const [loading, setLoading] = useState(false)
   const [selectedOperator, setSelectedOperator] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [hoveredItem, setHoveredItem] = useState<any | null>(null)
 
   const fetchCoverage = async () => {
     setLoading(true)
+    setError(null)
     try {
       const res = await fetch(
         `/api/coverage/towers?lat=${observerLat}&lon=${observerLon}&radius=30`,
         { cache: 'no-store' }
       )
+      if (!res.ok) throw new Error(`Falha ao carregar cobertura (${res.status})`)
       const json = await res.json()
       setData(json)
     } catch (e) {
       console.error(e)
+      setError(e instanceof Error ? e.message : 'Falha ao carregar dados de cobertura')
     } finally {
       setLoading(false)
     }
@@ -88,11 +96,9 @@ export function CoverageMap({ observerLat, observerLon }: { observerLat: number;
     canvas.height = h * dpr
     ctx.scale(dpr, dpr)
 
-    // Fundo espacial
     ctx.fillStyle = '#0a0e14'
     ctx.fillRect(0, 0, w, h)
 
-    // Grid de fundo
     ctx.strokeStyle = 'rgba(34, 211, 238, 0.08)'
     ctx.lineWidth = 1
     const gridSize = 30
@@ -109,7 +115,6 @@ export function CoverageMap({ observerLat, observerLon }: { observerLat: number;
       ctx.stroke()
     }
 
-    // Círculos concêntricos ao redor do observador (range)
     const cx = w / 2
     const cy = h / 2
     const maxRadius = Math.min(w, h) / 2 - 20
@@ -122,20 +127,17 @@ export function CoverageMap({ observerLat, observerLon }: { observerLat: number;
       ctx.lineWidth = 1
       ctx.stroke()
 
-      // Label de distância
       ctx.fillStyle = 'rgba(107, 114, 128, 0.5)'
       ctx.font = '9px monospace'
       ctx.fillText(`${(7.5 * i).toFixed(1)}km`, cx + r + 2, cy - 2)
     }
 
-    // Linhas cardinais
     ctx.strokeStyle = 'rgba(34, 211, 238, 0.15)'
     ctx.beginPath()
     ctx.moveTo(cx, 5); ctx.lineTo(cx, h - 5)
     ctx.moveTo(5, cy); ctx.lineTo(w - 5, cy)
     ctx.stroke()
 
-    // Rosa dos ventos
     ctx.fillStyle = 'rgba(34, 211, 238, 0.5)'
     ctx.font = 'bold 10px monospace'
     ctx.fillText('N', cx - 3, 14)
@@ -143,15 +145,13 @@ export function CoverageMap({ observerLat, observerLon }: { observerLat: number;
     ctx.fillText('W', 4, cy + 3)
     ctx.fillText('E', w - 12, cy + 3)
 
-    // Função para converter lat/lon → x/y (projeção equiretangular simples)
-    const range = 0.15 // ~15km em graus
+    const range = 0.15
     const project = (lat: number, lon: number) => {
-      const x = cx + ((lon - observerLon) / range) * (maxRadius)
-      const y = cy - ((lat - observerLat) / range) * (maxRadius)
+      const x = cx + ((lon - observerLon) / range) * maxRadius
+      const y = cy - ((lat - observerLat) / range) * maxRadius
       return { x, y }
     }
 
-    // Torres de celular
     data.towers.forEach((tower) => {
       if (selectedOperator && tower.operator.toLowerCase() !== selectedOperator) return
       const { x, y } = project(tower.lat, tower.lon)
@@ -160,7 +160,6 @@ export function CoverageMap({ observerLat, observerLon }: { observerLat: number;
       const op = BRAZIL_OPERATORS.find((o) => o.name === tower.operator)
       const color = op?.color || '#888'
 
-      // Triângulo (torre)
       ctx.fillStyle = color + 'CC'
       ctx.beginPath()
       ctx.moveTo(x, y - 5)
@@ -169,14 +168,12 @@ export function CoverageMap({ observerLat, observerLon }: { observerLat: number;
       ctx.closePath()
       ctx.fill()
 
-      // Anel de sinal
       ctx.strokeStyle = color + '40'
       ctx.lineWidth = 1
       ctx.beginPath()
       ctx.arc(x, y, 8, 0, 2 * Math.PI)
       ctx.stroke()
 
-      // Hover marker
       if (hoveredItem === tower) {
         ctx.strokeStyle = '#fff'
         ctx.lineWidth = 2
@@ -186,7 +183,6 @@ export function CoverageMap({ observerLat, observerLon }: { observerLat: number;
       }
     })
 
-    // WiFi pontos
     data.wifiPoints.forEach((wifi) => {
       const { x, y } = project(wifi.lat, wifi.lng)
       if (x < 0 || x > w || y < 0 || y > h) return
@@ -196,7 +192,6 @@ export function CoverageMap({ observerLat, observerLon }: { observerLat: number;
       ctx.arc(x, y, 3, 0, 2 * Math.PI)
       ctx.fill()
 
-      // Anel
       ctx.strokeStyle = 'rgba(34, 211, 238, 0.3)'
       ctx.lineWidth = 1
       ctx.beginPath()
@@ -204,54 +199,23 @@ export function CoverageMap({ observerLat, observerLon }: { observerLat: number;
       ctx.stroke()
     })
 
-    // Observador (você)
     ctx.fillStyle = '#fff'
     ctx.beginPath()
     ctx.arc(cx, cy, 4, 0, 2 * Math.PI)
     ctx.fill()
 
-    // Pulso do observador
-    const time = Date.now() / 1000
-    const pulse = (time % 2) / 2
-    ctx.strokeStyle = `rgba(255, 255, 255, ${1 - pulse})`
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'
     ctx.lineWidth = 2
     ctx.beginPath()
-    ctx.arc(cx, cy, 4 + pulse * 15, 0, 2 * Math.PI)
+    ctx.arc(cx, cy, 10, 0, 2 * Math.PI)
     ctx.stroke()
   }, [data, hoveredItem, selectedOperator, observerLat, observerLon])
 
-  // Re-render contínuo para o pulso
-  useEffect(() => {
-    if (!data) return
-    let id: number
-    const animate = () => {
-      const canvas = canvasRef.current
-      if (canvas) {
-        const event = new Event('refresh-canvas')
-        canvas.dispatchEvent(event)
-      }
-      id = requestAnimationFrame(animate)
-    }
-    // Simples: re-render a cada 100ms
-    const interval = setInterval(() => {
-      const canvas = canvasRef.current
-      if (canvas) {
-        // Trigger redraw
-        const ctx = canvas.getContext('2d')
-        if (ctx) {
-          // só redesenha o pulso do observador
-        }
-      }
-    }, 100)
-    return () => clearInterval(interval)
-  }, [data])
-
   return (
     <div className="space-y-4">
-      {/* Mapa canvas */}
       <Card className="glass-card border-signal/30">
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <CardTitle className="flex items-center gap-2 text-base">
               <MapPin className="h-5 w-5 text-signal" />
               Mapa de Cobertura Local
@@ -262,25 +226,42 @@ export function CoverageMap({ observerLat, observerLon }: { observerLat: number;
               onClick={fetchCoverage}
               disabled={loading}
               className="h-7 w-7 p-0"
+              aria-label="Atualizar dados de cobertura"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
             </Button>
           </div>
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            <DataProvenance quality="sample" compact note="Pontos de Wi-Fi pertencem a um catálogo demonstrativo local." />
+            <DataProvenance quality="synthetic" compact note="ERBs são geradas sinteticamente para demonstrar a interface." />
+          </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
+          {error && (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+              {error}
+            </div>
+          )}
           <canvas
             ref={canvasRef}
             className="w-full h-72 rounded-lg border border-border/30"
             style={{ background: '#0a0e14' }}
           />
-          <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
             <span className="font-mono-jet">{observerLat.toFixed(4)}°, {observerLon.toFixed(4)}°</span>
-            <span>Raio: 30 km · Fonte: {data?.source || '...'}</span>
+            <span>Raio visual: 30 km</span>
           </div>
+          {data && (
+            <DataProvenance
+              quality="synthetic"
+              source={data.source}
+              updatedAt={data.timestamp}
+              note={data.note}
+            />
+          )}
         </CardContent>
       </Card>
 
-      {/* Filtro por operadora */}
       <div className="flex flex-wrap gap-1.5">
         <Button
           variant={!selectedOperator ? 'default' : 'outline'}
@@ -309,7 +290,6 @@ export function CoverageMap({ observerLat, observerLon }: { observerLat: number;
         ))}
       </div>
 
-      {/* Estatísticas por operadora */}
       {data?.byOperator && (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
           {data.byOperator.map((op) => (
@@ -319,18 +299,15 @@ export function CoverageMap({ observerLat, observerLon }: { observerLat: number;
               style={{ borderColor: op.color + '60' }}
             >
               <div className="flex items-center gap-1.5 mb-1">
-                <span
-                  className="w-2.5 h-2.5 rounded-full"
-                  style={{ backgroundColor: op.color }}
-                />
+                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: op.color }} />
                 <span className="text-sm font-semibold">{op.name}</span>
               </div>
               <div className="text-xs text-muted-foreground">
-                <span className="font-mono-jet text-foreground">{op.towers}</span> torres próximas
+                <span className="font-mono-jet text-foreground">{op.towers}</span> pontos simulados
               </div>
               {op.closest && (
                 <div className="text-[10px] text-muted-foreground mt-0.5">
-                  mais próxima: <span className="font-mono-jet text-foreground">{op.closest.toFixed(2)} km</span>
+                  simulação mais próxima: <span className="font-mono-jet text-foreground">{op.closest.toFixed(2)} km</span>
                 </div>
               )}
             </div>
@@ -338,15 +315,15 @@ export function CoverageMap({ observerLat, observerLon }: { observerLat: number;
         </div>
       )}
 
-      {/* Lista WiFi públicos */}
       <Card className="glass-card">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-sm">
             <Wifi className="h-4 w-4 text-signal" />
-            WiFi Públicos Próximos
-            <Badge variant="secondary" className="text-[10px] ml-auto">
-              {data?.wifiTotal ?? 0}
-            </Badge>
+            Wi-Fi público — catálogo demonstrativo
+            <span className="ml-auto flex items-center gap-1.5">
+              <DataProvenance quality="sample" compact />
+              <Badge variant="secondary" className="text-[10px]">{data?.wifiTotal ?? 0}</Badge>
+            </span>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -372,35 +349,35 @@ export function CoverageMap({ observerLat, observerLon }: { observerLat: number;
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="font-mono-jet text-xs text-emerald-400">
-                          {wifi.distance.toFixed(1)} km
-                        </div>
+                        <div className="font-mono-jet text-xs text-emerald-400">{wifi.distance.toFixed(1)} km</div>
                       </div>
                     </div>
                   )
                 })
               ) : (
                 <div className="text-center text-muted-foreground text-sm py-8">
-                  {loading ? 'Buscando...' : 'Nenhum ponto WiFi público encontrado em 30km.'}
+                  {loading ? 'Buscando...' : 'Nenhum ponto da amostra encontrado em 30 km.'}
                 </div>
               )}
             </div>
           </ScrollArea>
           <p className="text-[10px] text-muted-foreground mt-2 pt-2 border-t border-border/30">
-            Fonte: {data?.source}. Para cobertura nacional completa (87 mil pontos), consulte o programa WiFi Grátis Brasil no gov.br.
+            Este bloco usa uma amostra local do projeto. Não representa um diretório nacional completo ou atualizado em tempo real.
           </p>
         </CardContent>
       </Card>
 
-      {/* Lista de torres */}
       <Card className="glass-card">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-sm">
             <Radio className="h-4 w-4 text-orbit" />
-            Torres de Celular Próximas
-            <Badge variant="secondary" className="text-[10px] ml-auto">
-              {selectedOperator ? data?.towers.filter(t => t.operator.toLowerCase() === selectedOperator).length : data?.towersTotal ?? 0}
-            </Badge>
+            ERBs simuladas por operadora
+            <span className="ml-auto flex items-center gap-1.5">
+              <DataProvenance quality="synthetic" compact />
+              <Badge variant="secondary" className="text-[10px]">
+                {selectedOperator ? data?.towers.filter((t) => t.operator.toLowerCase() === selectedOperator).length : data?.towersTotal ?? 0}
+              </Badge>
+            </span>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -426,27 +403,21 @@ export function CoverageMap({ observerLat, observerLon }: { observerLat: number;
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium">{tower.operator}</div>
-                      <div className="text-[10px] text-muted-foreground">
-                        {tower.technology} · ERB estimada
-                      </div>
+                      <div className="text-[10px] text-muted-foreground">{tower.technology} · posição sintética</div>
                     </div>
                     <div className="text-right">
-                      <div className="font-mono-jet text-xs text-signal">
-                        {tower.distance.toFixed(2)} km
-                      </div>
+                      <div className="font-mono-jet text-xs text-signal">{tower.distance.toFixed(2)} km</div>
                     </div>
                   </div>
                 )
               })}
               {!data?.towers.length && !loading && (
-                <div className="text-center text-muted-foreground text-sm py-8">
-                  Sem torres no raio. Aumente o raio ou mova o observador.
-                </div>
+                <div className="text-center text-muted-foreground text-sm py-8">Sem pontos simulados no raio.</div>
               )}
             </div>
           </ScrollArea>
-          <p className="text-[10px] text-amber-400/70 mt-2 pt-2 border-t border-border/30">
-            ⚠️ Posições estimadas para protótipo. Para dados oficiais completos (200k+ torres), baixe a base ERB-Web da ANATEL.
+          <p className="text-[10px] text-fuchsia-300/80 mt-2 pt-2 border-t border-border/30">
+            SIMULAÇÃO: estas posições não são ERBs oficiais e não devem orientar deslocamento, segurança ou decisão operacional.
           </p>
         </CardContent>
       </Card>
