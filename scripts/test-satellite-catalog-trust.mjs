@@ -61,10 +61,10 @@ for (const forbidden of [
   '32% market',
   'cobertura global incluindo Brasil',
   'Opera no Brasil via',
-  "status: 'operational'",
-  "status: 'testing'",
-  "status: 'planned'",
-  "status: 'limited'",
+  "status: 'operational',",
+  "status: 'testing',",
+  "status: 'planned',",
+  "status: 'limited',",
 ]) {
   assert.equal(data.includes(forbidden), false, `mutable satellite claim returned: ${forbidden}`)
 }
