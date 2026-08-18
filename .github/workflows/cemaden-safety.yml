@@ -1,0 +1,31 @@
+name: CEMADEN Safety Gate
+
+on:
+  pull_request:
+    paths:
+      - 'src/proxy.ts'
+      - 'src/app/api/cemaden/alerts/route.ts'
+      - 'src/components/aussy/cemaden-alerts.tsx'
+      - 'scripts/test-cemaden-safety.mjs'
+      - '.github/workflows/cemaden-safety.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/proxy.ts'
+      - 'src/app/api/cemaden/alerts/route.ts'
+      - 'src/components/aussy/cemaden-alerts.tsx'
+      - 'scripts/test-cemaden-safety.mjs'
+      - '.github/workflows/cemaden-safety.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  cemaden-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Validate CEMADEN safety boundary
+        run: node scripts/test-cemaden-safety.mjs
