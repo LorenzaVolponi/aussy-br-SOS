@@ -241,7 +241,7 @@ await test('PRECACHE_LOCATION rejects invalid coordinates', async () => {
   assert.equal(Array.from(reply.failed).join(','), 'invalid-location')
 })
 
-await test('PRECACHE_LOCATION warms eight useful location endpoints with real coordinates', async () => {
+await test('PRECACHE_LOCATION warms all location endpoints with real coordinates', async () => {
   const reply = await dispatchMessage({ type: 'PRECACHE_LOCATION', lat: -25.4284, lon: -49.2733 })
   assert.equal(reply.ok, true)
   assert.equal(reply.total, 8)
