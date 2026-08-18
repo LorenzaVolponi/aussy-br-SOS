@@ -1,0 +1,29 @@
+name: Fauna Safety Gate
+
+on:
+  pull_request:
+    paths:
+      - 'src/lib/data/fauna.ts'
+      - 'src/components/aussy/fauna-protocols.tsx'
+      - 'scripts/test-fauna-safety.mjs'
+      - '.github/workflows/fauna-safety.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/lib/data/fauna.ts'
+      - 'src/components/aussy/fauna-protocols.tsx'
+      - 'scripts/test-fauna-safety.mjs'
+      - '.github/workflows/fauna-safety.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  fauna-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Validate fauna safety invariants
+        run: node scripts/test-fauna-safety.mjs
