@@ -65,7 +65,7 @@ assert.equal(fallbackCoordinate(new URL('https://aussy.local/api/geocode?lat=-25
   assert.equal(body.center, null)
   assert.equal(body.dataQuality, 'unavailable')
   assert.equal(body.total, 0)
-  assert.deepEqual(body.events, [])
+  assert.equal(body.events.length, 0)
   assert.equal(body.source, 'NASA EONET v3')
 }
 
@@ -83,7 +83,7 @@ assert.equal(fallbackCoordinate(new URL('https://aussy.local/api/geocode?lat=-25
   assert.equal(body.observationsLive, false)
   assert.equal(body.dataQuality, 'unavailable')
   assert.equal(body.total_estacoes, 0)
-  assert.deepEqual(body.proximas, [])
+  assert.equal(body.proximas.length, 0)
   assert.ok(body.fetchedAt)
   assert.equal('atualizado_em' in body, false)
 }
@@ -93,7 +93,7 @@ assert.equal(fallbackCoordinate(new URL('https://aussy.local/api/geocode?lat=-25
   assert.equal(body.online, false)
   assert.equal(body.dataQuality, 'unavailable')
   assert.equal(body.total, 0)
-  assert.deepEqual(body.alerts, [])
+  assert.equal(body.alerts.length, 0)
   assert.equal(body.source, 'INMET')
   assert.match(body.note, /Nenhum estado/)
 }
@@ -105,7 +105,7 @@ assert.equal(fallbackCoordinate(new URL('https://aussy.local/api/geocode?lat=-25
   assert.equal(body.deprecatedBehaviorRemoved, true)
   assert.equal(body.requestedLocation.lat, -25.4284)
   assert.equal(body.requestedLocation.lon, -49.2733)
-  assert.deepEqual(body.municipios, [])
+  assert.equal(body.municipios.length, 0)
 }
 
 {
