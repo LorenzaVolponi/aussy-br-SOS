@@ -1,0 +1,29 @@
+name: Survival Safety Gate
+
+on:
+  pull_request:
+    paths:
+      - 'src/lib/data/survival.ts'
+      - 'src/components/aussy/survival-tools.tsx'
+      - 'scripts/test-survival-safety.mjs'
+      - '.github/workflows/survival-safety.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/lib/data/survival.ts'
+      - 'src/components/aussy/survival-tools.tsx'
+      - 'scripts/test-survival-safety.mjs'
+      - '.github/workflows/survival-safety.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  survival-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Validate survival data safety
+        run: node scripts/test-survival-safety.mjs
