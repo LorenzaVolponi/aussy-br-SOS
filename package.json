@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
     "test:sw": "node scripts/test-sw-runtime.mjs",
+    "test:inmet": "node scripts/test-inmet-integrity.mjs",
     "verify:repo": "node scripts/verify-repo.mjs"
   },
   "dependencies": {
