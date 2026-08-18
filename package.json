@@ -12,6 +12,7 @@
     "test:inmet": "node scripts/test-inmet-integrity.mjs",
     "test:api": "node scripts/test-api-trust.mjs",
     "test:osm": "node scripts/test-osm-policy.mjs",
+    "test:surface": "node scripts/test-client-surface.mjs",
     "verify:repo": "node scripts/verify-repo.mjs"
   },
   "dependencies": {
