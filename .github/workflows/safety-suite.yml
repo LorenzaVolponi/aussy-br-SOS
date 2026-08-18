@@ -1,0 +1,23 @@
+name: Safety Suite
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  zero-dependency-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Runtime
+        run: node --version
+
+      - name: Run all zero-dependency safety gates
+        run: node scripts/run-safety-suite.mjs
