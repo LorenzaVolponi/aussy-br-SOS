@@ -415,6 +415,20 @@ export function EmergencySOS(_location: { observerLat?: number; observerLon?: nu
                   </ul>
                 </div>
 
+                <div className="rounded-lg bg-secondary/30 border border-border/40 p-3 text-[11px] text-muted-foreground leading-relaxed">
+                  <div className="font-medium text-foreground mb-1">Conteúdo educativo — não substitui atendimento profissional</div>
+                  <div><strong className="text-foreground">Fonte:</strong> {showFirstAid.sourceLabel}</div>
+                  <div><strong className="text-foreground">Verificado:</strong> {showFirstAid.verifiedAt}</div>
+                  <div className="mt-2 space-y-1">
+                    {showFirstAid.sourceUrls.map((url) => (
+                      <a key={url} href={url} target="_blank" rel="noopener noreferrer" className="block text-signal hover:underline break-all">
+                        Abrir fonte oficial
+                      </a>
+                    ))}
+                  </div>
+                  <p className="mt-2">Em urgência ou emergência, acione o SAMU 192 e siga as orientações do regulador.</p>
+                </div>
+
                 <Button asChild className="w-full bg-red-500 hover:bg-red-600 text-white">
                   <a href="tel:192">
                     <Phone className="h-4 w-4 mr-2" />
