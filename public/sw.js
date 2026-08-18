@@ -26,10 +26,6 @@ const APP_SHELL = [
 const EMERGENCY_PRECACHE = [
   '/api/emergency/contacts',
   '/api/emergency/first-aid',
-  '/api/satellites/tle?group=starlink&limit=20',
-  '/api/satellites/tle?group=iridium&limit=20',
-  '/api/satellites/tle?group=weather&limit=20',
-  '/api/satellites/tle?group=gnss&limit=20',
   '/api/inmet/alerts',
   '/api/cemaden/alerts',
   '/api/cptec/satellite',
