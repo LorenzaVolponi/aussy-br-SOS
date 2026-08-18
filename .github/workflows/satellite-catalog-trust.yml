@@ -1,0 +1,33 @@
+name: Satellite Catalog Trust Gate
+
+on:
+  pull_request:
+    paths:
+      - 'src/lib/data/satellites.ts'
+      - 'src/components/aussy/regulatory-info.tsx'
+      - 'src/components/aussy/emergency-sos.tsx'
+      - 'src/app/api/emergency/contacts/route.ts'
+      - 'scripts/test-satellite-catalog-trust.mjs'
+      - '.github/workflows/satellite-catalog-trust.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/lib/data/satellites.ts'
+      - 'src/components/aussy/regulatory-info.tsx'
+      - 'src/components/aussy/emergency-sos.tsx'
+      - 'src/app/api/emergency/contacts/route.ts'
+      - 'scripts/test-satellite-catalog-trust.mjs'
+      - '.github/workflows/satellite-catalog-trust.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  satellite-catalog-trust:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Validate satellite catalog and Brazil emergency/regulatory trust
+        run: node scripts/test-satellite-catalog-trust.mjs
