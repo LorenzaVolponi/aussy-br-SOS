@@ -1,6 +1,6 @@
-// Aussy Ontech Service Worker v8 — cold boot offline + cache seguro + recovery
+// Aussy Ontech Service Worker v9 — cold boot offline + cache seguro + recovery
 
-const CACHE_VERSION = 'aussy-v8';
+const CACHE_VERSION = 'aussy-v9';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const EMERGENCY_CACHE = `${CACHE_VERSION}-emergency`;
@@ -183,8 +183,9 @@ async function currentCachesReady() {
       return false;
     }
   });
-  const emergency = await emergencyCache.match('/api/emergency/contacts');
-  return { shell: Boolean(root) && hasNextAsset, emergency: Boolean(emergency) };
+  const emergencyContacts = await emergencyCache.match('/api/emergency/contacts');
+  const firstAid = await emergencyCache.match('/api/emergency/first-aid');
+  return { shell: Boolean(root) && hasNextAsset, emergency: Boolean(emergencyContacts) && Boolean(firstAid) };
 }
 
 function cachedResponseWithHeaders(response, extra = {}) {
@@ -265,7 +266,26 @@ function offlineApiResponse(url) {
     note: 'Sem catálogo ou observações INMET em cache para esta consulta.',
   });
 
-  if (path.startsWith('/api/cemaden')) return jsonResponse({ alerts: [], total: 0, error: 'offline', offline: true, dataQuality: 'unavailable', fetchedAt: now });
+  if (path.startsWith('/api/cemaden')) return jsonResponse({
+    online: false,
+    automationAvailable: false,
+    dataQuality: 'official-portal',
+    error: null,
+    source: 'CEMADEN / MCTI',
+    sourceUrl: 'https://www.gov.br/cemaden/pt-br/assuntos/monitoramento/alertas-em-tempo-real',
+    verifiedAt: '2026-08-18',
+    alerts: [],
+    total: 0,
+    portals: [
+      { name: 'Alertas em Tempo Real', url: 'https://www.gov.br/cemaden/pt-br/assuntos/monitoramento/alertas-em-tempo-real' },
+      { name: 'Previsão de Riscos', url: 'https://www.gov.br/cemaden/pt-br/assuntos/monitoramento/previsao-de-riscos' },
+      { name: 'GeoRisk', url: 'https://georisk.cemaden.gov.br/' },
+    ],
+    message: 'Consulta automatizada de alertas CEMADEN não está habilitada nesta build.',
+    note: 'Lista vazia NÃO significa ausência de alertas ativos. Consulte os canais oficiais quando houver conexão.',
+    fetchedAt: now,
+    offline: true,
+  }, 200);
   if (path.startsWith('/api/queimadas')) return jsonResponse({ focos: [], total: 0, error: 'offline', offline: true, dataQuality: 'unavailable', fetchedAt: now });
   if (path.startsWith('/api/earthquakes')) return jsonResponse({ events: [], total: 0, error: 'offline', offline: true, dataQuality: 'unavailable', queriedAt: now });
 
@@ -436,7 +456,7 @@ async function emergencyFallback(request) {
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const [shell, emergency] = await Promise.all([precacheShell(), precacheEmergency()]);
-    console.log('[SW] Install v8', { shell, emergency });
+    console.log('[SW] Install v9', { shell, emergency });
     await self.skipWaiting();
   })());
 });
@@ -453,7 +473,7 @@ self.addEventListener('activate', (event) => {
           .map((k) => caches.delete(k))
       );
     } else {
-      console.warn('[SW] v8 parcial; caches anteriores preservados', readiness);
+      console.warn('[SW] v9 parcial; caches anteriores preservados', readiness);
     }
 
     await self.clients.claim();
@@ -582,4 +602,4 @@ self.addEventListener('periodicsync', (event) => {
   if (event.tag === 'aussy-refresh') event.waitUntil(precacheEmergency());
 });
 
-console.log('[SW] Aussy Ontech v8 — cold boot + posição real + last-known-good cache + OSM passivo');
+console.log('[SW] Aussy Ontech v9 — cold boot + posição real + last-known-good cache + OSM passivo');
