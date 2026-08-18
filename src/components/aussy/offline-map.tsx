@@ -3,9 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import {
   Map as MapIcon,
-  Download,
   Trash2,
-  Loader2,
   CloudOff,
   CheckCircle2,
   AlertCircle,
@@ -13,43 +11,45 @@ import {
   ZoomIn,
   ZoomOut,
   LocateFixed,
-  RefreshCw,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Progress } from '@/components/ui/progress'
 import { toast } from 'sonner'
 import { useGeolocation } from '@/hooks/use-geolocation'
 
 /**
- * Mapa offline usando tiles OpenStreetMap.
+ * Visualizador interativo usando os tiles raster padrão do OpenStreetMap.
  *
- * Estratégia:
- * - Renderiza tiles OSM em um grid de 3x3 (centro + 8 vizinhos) na zoom atual
- * - "Baixar mapa offline" pré-cacheia tiles para múltiplos níveis de zoom (14-16)
- *   numa área de ~5km ao redor do usuário
- * - Cache API do Service Worker serve os tiles offline
- * - Quando offline e sem tiles em cache, mostra mensagem clara
- * - Marcador no centro mostra posição do usuário
+ * Regras de uso:
+ * - carrega somente os tiles necessários para a visualização atual;
+ * - NÃO oferece pré-download/prefetch de área ou múltiplos níveis de zoom;
+ * - o Service Worker pode preservar tiles que o usuário efetivamente visualizou;
+ * - quando offline, somente tiles já visualizados/cacheados podem reaparecer;
+ * - a atribuição OpenStreetMap permanece visível no mapa.
+ *
+ * Para mapas offline completos, o projeto precisa de um provedor que autorize
+ * explicitamente offline/prefetch ou de infraestrutura de tiles própria.
  */
 
 const TILE_URL = (z: number, x: number, y: number) =>
   `https://tile.openstreetmap.org/${z}/${x}/${y}.png`
 
-// Converte lat/lon para tile x/y (algoritmo Web Mercator)
 function lonToTileX(lon: number, z: number): number {
   return Math.floor(((lon + 180) / 360) * Math.pow(2, z))
 }
+
 function latToTileY(lat: number, z: number): number {
   const rad = (lat * Math.PI) / 180
   return Math.floor(
     ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * Math.pow(2, z)
   )
 }
+
 function tileXToLon(x: number, z: number): number {
   return (x / Math.pow(2, z)) * 360 - 180
 }
+
 function tileYToLat(y: number, z: number): number {
   const n = Math.PI - (2 * Math.PI * y) / Math.pow(2, z)
   return (180 / Math.PI) * Math.atan(Math.sinh(n))
@@ -58,23 +58,20 @@ function tileYToLat(y: number, z: number): number {
 const CACHE_NAME = 'aussy-v2-osm-tiles'
 
 interface OfflineMapProps {
-  initialLat?: number
-  initialLon?: number
+  initialLat: number
+  initialLon: number
 }
 
-export function OfflineMap({ initialLat = -15.7801, initialLon = -47.9292 }: OfflineMapProps) {
+export function OfflineMap({ initialLat, initialLon }: OfflineMapProps) {
   const { point, detect, loading: geoLoading } = useGeolocation()
   const [zoom, setZoom] = useState(15)
   const [centerLat, setCenterLat] = useState(initialLat)
   const [centerLon, setCenterLon] = useState(initialLon)
-  const [caching, setCaching] = useState(false)
-  const [cacheProgress, setCacheProgress] = useState(0)
   const [cacheInfo, setCacheInfo] = useState<{ count: number; sizeBytes: number } | null>(null)
   const [tilesLoaded, setTilesLoaded] = useState<Set<string>>(new Set())
   const [failedTiles, setFailedTiles] = useState<Set<string>>(new Set())
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Sincroniza com GPS
   useEffect(() => {
     if (point) {
       setCenterLat(point.lat)
@@ -82,135 +79,84 @@ export function OfflineMap({ initialLat = -15.7801, initialLon = -47.9292 }: Off
     }
   }, [point])
 
-  // Calcula tiles do grid 3x3 centrado na posição atual
   const centerTileX = lonToTileX(centerLon, zoom)
   const centerTileY = latToTileY(centerLat, zoom)
   const tiles: { z: number; x: number; y: number; offsetX: number; offsetY: number }[] = []
+
   for (let dy = -1; dy <= 1; dy++) {
     for (let dx = -1; dx <= 1; dx++) {
       const x = centerTileX + dx
       const y = centerTileY + dy
-      // Verifica limites válidos
       const max = Math.pow(2, zoom) - 1
       if (x < 0 || y < 0 || x > max || y > max) continue
       tiles.push({ z: zoom, x, y, offsetX: dx, offsetY: dy })
     }
   }
 
-  // Marca tile como carregado
   const handleTileLoad = useCallback((key: string) => {
-    setTilesLoaded((prev) => new Set(prev).add(key))
+    setTilesLoaded((previous) => new Set(previous).add(key))
+    setFailedTiles((previous) => {
+      if (!previous.has(key)) return previous
+      const next = new Set(previous)
+      next.delete(key)
+      return next
+    })
   }, [])
 
   const handleTileError = useCallback((key: string) => {
-    setFailedTiles((prev) => new Set(prev).add(key))
+    setFailedTiles((previous) => new Set(previous).add(key))
   }, [])
 
-  // Pré-carrega tiles para a área (5km ao redor, zoom 14-16)
-  const handleDownloadOffline = async () => {
-    setCaching(true)
-    setCacheProgress(0)
-
-    const zooms = [14, 15, 16]
-    const tilesToFetch: { z: number; x: number; y: number }[] = []
-    for (const z of zooms) {
-      const cx = lonToTileX(centerLon, z)
-      const cy = latToTileY(centerLat, z)
-      // 5x5 em cada zoom = ~2.5km raio em zoom 14
-      for (let dy = -2; dy <= 2; dy++) {
-        for (let dx = -2; dx <= 2; dx++) {
-          const x = cx + dx
-          const y = cy + dy
-          const max = Math.pow(2, z) - 1
-          if (x < 0 || y < 0 || x > max || y > max) continue
-          tilesToFetch.push({ z, x, y })
-        }
-      }
-    }
-
-    const cache = await caches.open(CACHE_NAME)
-    let done = 0
-    let added = 0
-    for (const { z, x, y } of tilesToFetch) {
-      const url = TILE_URL(z, x, y)
-      try {
-        // Verifica se já está em cache
-        const cached = await cache.match(url)
-        if (!cached) {
-          const res = await fetch(url, { cache: 'no-store' })
-          if (res.ok) {
-            await cache.put(url, res.clone())
-            added++
-          }
-        }
-      } catch (e) {
-        // ignora — tiles individuais podem falhar
-      }
-      done++
-      setCacheProgress((done / tilesToFetch.length) * 100)
-    }
-
-    setCaching(false)
-    setCacheProgress(0)
-    toast.success('Mapa offline pronto!', {
-      description: `${added} novos tiles cacheados (${tilesToFetch.length} totais em 3 níveis de zoom).`,
-    })
-    refreshCacheInfo()
-  }
-
-  // Limpa cache de tiles
-  const handleClearTiles = async () => {
-    if (!confirm('Apagar todos os tiles de mapa offline?')) return
-    const cache = await caches.open(CACHE_NAME)
-    const keys = await cache.keys()
-    await Promise.all(keys.map((k) => cache.delete(k)))
-    toast.success('Tiles apagados')
-    refreshCacheInfo()
-  }
-
-  // Informações de cache
   const refreshCacheInfo = useCallback(async () => {
     try {
       const cache = await caches.open(CACHE_NAME)
       const keys = await cache.keys()
       let size = 0
-      for (const k of keys) {
-        const res = await cache.match(k)
-        if (res) {
-          const blob = await res.blob()
-          size += blob.size
+
+      for (const key of keys) {
+        try {
+          const response = await cache.match(key)
+          if (response && response.type !== 'opaque') {
+            size += (await response.blob()).size
+          }
+        } catch {
+          // Respostas opacas podem não expor o corpo/tamanho, mas seguem contadas.
         }
       }
+
       setCacheInfo({ count: keys.length, sizeBytes: size })
-    } catch (e) {
+    } catch {
       setCacheInfo({ count: 0, sizeBytes: 0 })
     }
   }, [])
 
   useEffect(() => {
-    refreshCacheInfo()
-  }, [refreshCacheInfo])
+    void refreshCacheInfo()
+  }, [refreshCacheInfo, tilesLoaded])
 
-  // Recenter
+  const handleClearTiles = async () => {
+    if (!confirm('Apagar os tiles OpenStreetMap já visualizados e guardados em cache?')) return
+    const cache = await caches.open(CACHE_NAME)
+    const keys = await cache.keys()
+    await Promise.all(keys.map((key) => cache.delete(key)))
+    toast.success('Cache de tiles apagado')
+    void refreshCacheInfo()
+  }
+
   const handleRecenter = async () => {
     await detect(true)
   }
 
-  // Mover mapa (pan)
   const pan = (dir: 'n' | 's' | 'e' | 'w') => {
-    const step = 1 // 1 tile
+    const step = 1
     if (dir === 'n') {
-      const newLat = tileYToLat(centerTileY - step, zoom) + (centerLat - tileYToLat(centerTileY, zoom))
-      setCenterLat(newLat)
+      setCenterLat(tileYToLat(centerTileY - step, zoom) + (centerLat - tileYToLat(centerTileY, zoom)))
     } else if (dir === 's') {
-      const newLat = tileYToLat(centerTileY + step, zoom) + (centerLat - tileYToLat(centerTileY, zoom))
-      setCenterLat(newLat)
+      setCenterLat(tileYToLat(centerTileY + step, zoom) + (centerLat - tileYToLat(centerTileY, zoom)))
     } else if (dir === 'e') {
-      const newLon = tileXToLon(centerTileX + step, zoom) + (centerLon - tileXToLon(centerTileX, zoom))
-      setCenterLon(newLon)
+      setCenterLon(tileXToLon(centerTileX + step, zoom) + (centerLon - tileXToLon(centerTileX, zoom)))
     } else if (dir === 'w') {
-      const newLon = tileXToLon(centerTileX - step, zoom) + (centerLon - tileXToLon(centerTileX, zoom))
-      setCenterLon(newLon)
+      setCenterLon(tileXToLon(centerTileX - step, zoom) + (centerLon - tileXToLon(centerTileX, zoom)))
     }
   }
 
@@ -220,35 +166,37 @@ export function OfflineMap({ initialLat = -15.7801, initialLon = -47.9292 }: Off
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
   }
 
+  const visibleLoaded = tiles.filter(({ z, x, y }) => tilesLoaded.has(`${z}/${x}/${y}`)).length
+  const visibleFailed = tiles.filter(({ z, x, y }) => failedTiles.has(`${z}/${x}/${y}`)).length
+
   return (
     <Card className="border-emerald-500/20 bg-emerald-500/5">
       <CardHeader className="pb-3">
-        <CardTitle className="flex items-center justify-between text-sm">
-          <span className="flex items-center gap-2">
-            <MapIcon className="h-4 w-4 text-emerald-400" />
-            Mapa offline (OpenStreetMap)
+        <CardTitle className="flex items-center justify-between text-sm gap-2">
+          <span className="flex items-center gap-2 min-w-0">
+            <MapIcon className="h-4 w-4 text-emerald-400 flex-shrink-0" />
+            <span className="truncate">Mapa OSM · cache de visualização</span>
           </span>
-          <div className="flex gap-1">
-            <Button onClick={handleDownloadOffline} size="sm" variant="outline" className="h-7 text-xs" disabled={caching}>
-              {caching ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Download className="h-3 w-3 mr-1" />}
-              {caching ? 'Baixando...' : 'Baixar offline'}
+          {cacheInfo && cacheInfo.count > 0 && (
+            <Button
+              onClick={handleClearTiles}
+              size="sm"
+              variant="ghost"
+              className="h-7 w-7 p-0 text-red-400 flex-shrink-0"
+              title="Limpar tiles visualizados"
+            >
+              <Trash2 className="h-3 w-3" />
             </Button>
-            {cacheInfo && cacheInfo.count > 0 && (
-              <Button onClick={handleClearTiles} size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-400">
-                <Trash2 className="h-3 w-3" />
-              </Button>
-            )}
-          </div>
+          )}
         </CardTitle>
       </CardHeader>
+
       <CardContent className="space-y-3">
-        {/* Visualização do mapa */}
         <div
           ref={containerRef}
           className="relative w-full aspect-square sm:aspect-video overflow-hidden rounded-lg border border-border/40 bg-background/50"
           style={{ minHeight: '280px' }}
         >
-          {/* Grid de tiles 3x3 */}
           <div className="absolute inset-0 grid grid-cols-3 grid-rows-3">
             {tiles.map(({ z, x, y, offsetX, offsetY }) => {
               const key = `${z}/${x}/${y}`
@@ -257,10 +205,7 @@ export function OfflineMap({ initialLat = -15.7801, initialLon = -47.9292 }: Off
                 <div
                   key={key}
                   className="relative flex items-center justify-center overflow-hidden"
-                  style={{
-                    gridColumn: offsetX + 2,
-                    gridRow: offsetY + 2,
-                  }}
+                  style={{ gridColumn: offsetX + 2, gridRow: offsetY + 2 }}
                 >
                   {!isFailed ? (
                     <img
@@ -283,7 +228,6 @@ export function OfflineMap({ initialLat = -15.7801, initialLon = -47.9292 }: Off
             })}
           </div>
 
-          {/* Marcador central do usuário */}
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none">
             <div className="relative">
               <div className="w-4 h-4 rounded-full bg-signal border-2 border-white shadow-lg" />
@@ -291,39 +235,18 @@ export function OfflineMap({ initialLat = -15.7801, initialLon = -47.9292 }: Off
             </div>
           </div>
 
-          {/* Controles de zoom */}
           <div className="absolute bottom-2 right-2 flex flex-col gap-1 z-20">
-            <Button
-              onClick={() => setZoom((z) => Math.min(18, z + 1))}
-              size="sm"
-              variant="secondary"
-              className="h-7 w-7 p-0"
-              title="Aproximar"
-            >
+            <Button onClick={() => setZoom((value) => Math.min(18, value + 1))} size="sm" variant="secondary" className="h-7 w-7 p-0" title="Aproximar">
               <ZoomIn className="h-3.5 w-3.5" />
             </Button>
-            <Button
-              onClick={() => setZoom((z) => Math.max(2, z - 1))}
-              size="sm"
-              variant="secondary"
-              className="h-7 w-7 p-0"
-              title="Afastar"
-            >
+            <Button onClick={() => setZoom((value) => Math.max(2, value - 1))} size="sm" variant="secondary" className="h-7 w-7 p-0" title="Afastar">
               <ZoomOut className="h-3.5 w-3.5" />
             </Button>
-            <Button
-              onClick={handleRecenter}
-              size="sm"
-              variant="secondary"
-              className="h-7 w-7 p-0"
-              title="Centralizar no GPS"
-              disabled={geoLoading}
-            >
+            <Button onClick={handleRecenter} size="sm" variant="secondary" className="h-7 w-7 p-0" title="Centralizar no GPS" disabled={geoLoading}>
               <LocateFixed className={`h-3.5 w-3.5 ${geoLoading ? 'animate-spin' : ''}`} />
             </Button>
           </div>
 
-          {/* Controles de pan (setas) */}
           <div className="absolute top-2 left-2 flex flex-col items-center gap-1 z-20">
             <Button onClick={() => pan('n')} size="sm" variant="secondary" className="h-6 w-6 p-0 text-[10px]">↑</Button>
             <div className="flex gap-1">
@@ -333,39 +256,32 @@ export function OfflineMap({ initialLat = -15.7801, initialLon = -47.9292 }: Off
             <Button onClick={() => pan('s')} size="sm" variant="secondary" className="h-6 w-6 p-0 text-[10px]">↓</Button>
           </div>
 
-          {/* Badge de zoom + coords */}
           <div className="absolute top-2 right-2 flex flex-col items-end gap-1 z-20">
-            <Badge variant="outline" className="text-[10px] font-mono-jet bg-background/80">
-              z{zoom}
-            </Badge>
+            <Badge variant="outline" className="text-[10px] font-mono-jet bg-background/80">z{zoom}</Badge>
             <Badge variant="outline" className="text-[10px] font-mono-jet bg-background/80">
               {centerLat.toFixed(4)}, {centerLon.toFixed(4)}
             </Badge>
           </div>
 
-          {/* Estado vazio (sem tiles carregados) */}
-          {tilesLoaded.size === 0 && failedTiles.size > 0 && (
+          <a
+            href="https://www.openstreetmap.org/copyright"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="absolute bottom-1 left-1 z-20 rounded bg-background/85 px-1.5 py-0.5 text-[9px] text-foreground/80 underline-offset-2 hover:underline"
+          >
+            © OpenStreetMap contributors
+          </a>
+
+          {visibleLoaded === 0 && visibleFailed > 0 && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 z-30 text-center px-4">
               <CloudOff className="h-8 w-8 text-muted-foreground/50 mb-2" />
-              <p className="text-xs text-muted-foreground mb-3">
-                Sem tiles em cache. Toque em &quot;Baixar offline&quot; para pré-carregar o mapa da sua região.
+              <p className="text-xs text-muted-foreground">
+                Sem tile armazenado para esta visualização. Conecte-se e navegue pelo mapa para que apenas os tiles efetivamente vistos possam ficar em cache.
               </p>
             </div>
           )}
         </div>
 
-        {/* Progress de cacheamento */}
-        {caching && (
-          <div className="space-y-1">
-            <div className="flex justify-between text-[10px] text-muted-foreground font-mono-jet">
-              <span>Baixando tiles OpenStreetMap...</span>
-              <span>{Math.round(cacheProgress)}%</span>
-            </div>
-            <Progress value={cacheProgress} className="h-1.5" />
-          </div>
-        )}
-
-        {/* Info de cache + dicas */}
         <div className="grid grid-cols-2 gap-2 text-[11px]">
           <div className="flex items-center gap-2 p-2 rounded bg-background/50">
             {cacheInfo && cacheInfo.count > 0 ? (
@@ -374,21 +290,21 @@ export function OfflineMap({ initialLat = -15.7801, initialLon = -47.9292 }: Off
               <AlertCircle className="h-3.5 w-3.5 text-amber-400" />
             )}
             <div>
-              <div className="font-mono-jet text-[10px] text-muted-foreground">TILES EM CACHE</div>
+              <div className="font-mono-jet text-[10px] text-muted-foreground">TILES JÁ VISTOS</div>
               <div className="font-medium">{cacheInfo?.count ?? 0} tiles</div>
             </div>
           </div>
           <div className="flex items-center gap-2 p-2 rounded bg-background/50">
             <Layers className="h-3.5 w-3.5 text-emerald-400" />
             <div>
-              <div className="font-mono-jet text-[10px] text-muted-foreground">TAMANHO</div>
+              <div className="font-mono-jet text-[10px] text-muted-foreground">TAMANHO LEGÍVEL</div>
               <div className="font-medium">{formatBytes(cacheInfo?.sizeBytes ?? 0)}</div>
             </div>
           </div>
         </div>
 
-        <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
-          🗺️ Tiles OpenStreetMap (CC-BY-SA). Botão &quot;Baixar offline&quot; cacheia 75 tiles em 3 níveis de zoom (14, 15, 16) — ~2.5km ao redor. Funciona 100% offline após download.
+        <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+          O servidor padrão do OpenStreetMap é usado somente para visualização interativa. O Aussy não pré-baixa áreas nem pilhas de zoom: o cache guarda apenas tiles solicitados pela navegação do usuário. Para pacotes de mapa offline completos será necessário usar um provedor que autorize prefetch/offline ou infraestrutura própria.
         </p>
       </CardContent>
     </Card>
