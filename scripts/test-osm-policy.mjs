@@ -22,6 +22,7 @@ function forbidFragments(path, content, fragments) {
 const mapPath = 'src/components/aussy/offline-map.tsx'
 const swPath = 'public/sw.js'
 const docsPath = 'docs/OFFLINE_TEST.md'
+const nextConfigPath = 'next.config.ts'
 
 const map = await read(mapPath)
 requireFragments(mapPath, map, [
@@ -63,6 +64,16 @@ forbidFragments(swPath, sw, [
   "fetch(request, { cache: 'no-store' })",
 ])
 
+const nextConfig = await read(nextConfigPath)
+requireFragments(nextConfigPath, nextConfig, [
+  "'https://tile.openstreetmap.org'",
+  "{ key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' }",
+])
+forbidFragments(nextConfigPath, nextConfig, [
+  'https://*.tile.openstreetmap.org',
+  "{ key: 'Referrer-Policy', value: 'no-referrer' }",
+])
+
 const docs = await read(docsPath)
 requireFragments(docsPath, docs, [
   'Não existe pré-download de região no servidor padrão do OpenStreetMap',
@@ -81,4 +92,4 @@ if (failures.length) {
   process.exit(1)
 }
 
-console.log('OSM tile policy gate OK — interactive-only requests, visible attribution and passive cache semantics are protected')
+console.log('OSM tile policy gate OK — canonical host, referer, interactive-only requests, visible attribution and passive cache semantics are protected')
