@@ -1,0 +1,33 @@
+name: First Aid Clinical Safety Gate
+
+on:
+  pull_request:
+    paths:
+      - 'src/lib/data/first-aid.ts'
+      - 'src/app/api/emergency/first-aid/route.ts'
+      - 'src/components/aussy/emergency-sos.tsx'
+      - 'docs/FIRST_AID_SAFETY_BASELINE.md'
+      - 'scripts/test-first-aid-safety.mjs'
+      - '.github/workflows/first-aid-safety.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/lib/data/first-aid.ts'
+      - 'src/app/api/emergency/first-aid/route.ts'
+      - 'src/components/aussy/emergency-sos.tsx'
+      - 'docs/FIRST_AID_SAFETY_BASELINE.md'
+      - 'scripts/test-first-aid-safety.mjs'
+      - '.github/workflows/first-aid-safety.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  first-aid-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Validate first-aid clinical invariants
+        run: node scripts/test-first-aid-safety.mjs
