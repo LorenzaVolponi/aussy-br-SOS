@@ -1,0 +1,31 @@
+name: Orbital Trust Gate
+
+on:
+  pull_request:
+    paths:
+      - 'src/app/api/satellites/tle/route.ts'
+      - 'src/components/aussy/satellite-tracker.tsx'
+      - 'public/sw.js'
+      - 'scripts/test-orbital-integrity.mjs'
+      - '.github/workflows/orbital-trust.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/app/api/satellites/tle/route.ts'
+      - 'src/components/aussy/satellite-tracker.tsx'
+      - 'public/sw.js'
+      - 'scripts/test-orbital-integrity.mjs'
+      - '.github/workflows/orbital-trust.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  orbital-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Orbital cache and observer integrity
+        run: node scripts/test-orbital-integrity.mjs
