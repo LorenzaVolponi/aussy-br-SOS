@@ -39,6 +39,7 @@ import {
   X,
   Wifi,
   WifiOff,
+  MapPin,
 } from 'lucide-react'
 import { NetworkMonitor } from '@/components/aussy/network-monitor'
 import { EmergencySOS } from '@/components/aussy/emergency-sos'
@@ -93,7 +94,7 @@ interface TabDef {
   short: string
   icon: typeof Activity
   color: string
-  primary: boolean // aparece na bottom bar (mobile)
+  primary: boolean
   group: 'main' | 'more'
 }
 
@@ -123,7 +124,6 @@ export default function Home() {
   const [showInstallBanner, setShowInstallBanner] = useState(false)
   const [cityName, setCityName] = useState<string | null>(null)
 
-  // Sync tab from URL query param (deep-linking from manifest shortcuts)
   useEffect(() => {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
@@ -137,7 +137,6 @@ export default function Home() {
     const handler = (e: any) => {
       e.preventDefault()
       setInstallPrompt(e)
-      // Mostra banner após 12s se nunca recusou
       const dismissed = localStorage.getItem('aussy_install_dismissed')
       if (!dismissed) {
         setTimeout(() => setShowInstallBanner(true), 12000)
@@ -145,7 +144,6 @@ export default function Home() {
     }
     window.addEventListener('beforeinstallprompt', handler)
 
-    // Detecta se já está instalado (standalone)
     const isStandalone =
       window.matchMedia('(display-mode: standalone)').matches ||
       (window.navigator as any).standalone === true
@@ -165,9 +163,8 @@ export default function Home() {
     detect()
   }, [detect])
 
-  // Reverse geocoding — busca nome da cidade (cache 24h)
   useEffect(() => {
-    if (!point?.lat || !point?.lon) return
+    if (point?.lat == null || point?.lon == null) return
     let cancelled = false
     fetch(`/api/geocode?lat=${point.lat}&lon=${point.lon}`)
       .then((r) => r.json())
@@ -186,33 +183,42 @@ export default function Home() {
     const choice = await installPrompt.userChoice
     if (choice.outcome === 'accepted') {
       toast.success('Aussy Ontech instalado!', {
-        description: 'Abra pela tela inicial para usar offline.',
+        description: 'App shell e recursos previamente preparados podem ser usados sem rede; dados externos dependem do cache disponível.',
       })
     }
     setInstallPrompt(null)
   }
 
-  const observerLat = point?.lat ?? -15.7801
-  const observerLon = point?.lon ?? -47.9292
-
-  // Sidebar fixa em landscape/tablet/desktop
   const useSidebar = orientation.isLandscape || orientation.isTablet || orientation.isWide
 
   const handleTabClick = useCallback((k: TabKey) => {
     setTab(k)
     setMoreOpen(false)
-    // Scroll to top on tab change
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'smooth' })
     }
   }, [])
+
+  const LocationPending = () => (
+    <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
+      <div className="flex items-start gap-2">
+        <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0" />
+        <div>
+          <div className="font-semibold">Aguardando localização válida</div>
+          <div className="text-xs text-amber-200/80 mt-1 leading-relaxed">
+            Este módulo depende da sua posição. O Aussy não usa uma cidade padrão como se fosse sua localização. Autorize o GPS ou reutilize uma posição salva anteriormente.
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 
   const tabContent: Record<TabKey, React.ReactNode> = {
     home: (
       <div className="space-y-3 sm:space-y-4">
         <NoSignalWizard />
         <OfflineManager />
-        <LazyWeatherForecast lat={observerLat} lon={observerLon} />
+        {point ? <LazyWeatherForecast lat={point.lat} lon={point.lon} /> : <LocationPending />}
         <InmetAlerts />
         <LazyCemadenAlerts />
         <NetworkMonitor />
@@ -220,7 +226,12 @@ export default function Home() {
     ),
     emergency: (
       <div className="space-y-3 sm:space-y-4">
-        <EmergencySOS observerLat={observerLat} observerLon={observerLon} />
+        <EmergencySOS observerLat={point?.lat ?? 0} observerLon={point?.lon ?? 0} />
+        {!point && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+            A localização ainda não foi obtida. Ligações de emergência e o alarme local continuam disponíveis; recursos que precisem de coordenadas devem aguardar GPS/posição salva.
+          </div>
+        )}
         <ShakeToSOS />
         <LazyMedicalCardQR />
         <LazyEmergencyContacts />
@@ -230,18 +241,30 @@ export default function Home() {
     ),
     clima: (
       <div className="space-y-3 sm:space-y-4">
-        <LazyWeatherForecast lat={observerLat} lon={observerLon} />
-        <LazyInmetStations lat={observerLat} lon={observerLon} />
+        {point ? (
+          <>
+            <LazyWeatherForecast lat={point.lat} lon={point.lon} />
+            <LazyInmetStations lat={point.lat} lon={point.lon} />
+            <LazyEarthquakesCard lat={point.lat} lon={point.lon} />
+          </>
+        ) : (
+          <LocationPending />
+        )}
         <LazyCptecSatellite />
         <InmetAlerts />
         <LazyCemadenAlerts />
-        <LazyEarthquakesCard lat={observerLat} lon={observerLon} />
       </div>
     ),
     mapa: (
       <div className="space-y-3 sm:space-y-4">
-        <LazyOfflineMap initialLat={observerLat} initialLon={observerLon} />
-        <LazyCoverageMap observerLat={observerLat} observerLon={observerLon} />
+        {point ? (
+          <>
+            <LazyOfflineMap initialLat={point.lat} initialLon={point.lon} />
+            <LazyCoverageMap observerLat={point.lat} observerLon={point.lon} />
+          </>
+        ) : (
+          <LocationPending />
+        )}
         <LazyMeshNetwork />
         <RegulatoryInfo />
       </div>
@@ -249,21 +272,27 @@ export default function Home() {
     natureza: (
       <div className="space-y-3 sm:space-y-4">
         <LazyCemadenAlerts />
-        <LazyAnaRios lat={observerLat} lon={observerLon} />
+        {point ? (
+          <>
+            <LazyAnaRios lat={point.lat} lon={point.lon} />
+            <LazyEonetCard lat={point.lat} lon={point.lon} />
+          </>
+        ) : (
+          <LocationPending />
+        )}
         <LazyFaunaProtocols />
-        <LazyEonetCard lat={observerLat} lon={observerLon} />
       </div>
     ),
     satellites: (
       <div className="space-y-3 sm:space-y-4">
-        <LazySatelliteTracker observerLat={observerLat} observerLon={observerLon} />
+        {point ? <LazySatelliteTracker observerLat={point.lat} observerLon={point.lon} /> : <LocationPending />}
         <LazyCptecSatellite />
         <LazyConstellationInfo />
       </div>
     ),
     sensores: (
       <div className="space-y-3 sm:space-y-4">
-        <LazyCompassAltimeter observerLat={observerLat} observerLon={observerLon} />
+        {point ? <LazyCompassAltimeter observerLat={point.lat} observerLon={point.lon} /> : <LocationPending />}
         <LazyGpsTrail />
       </div>
     ),
@@ -283,7 +312,6 @@ export default function Home() {
     ),
   }
 
-  // ============ QUICK ACTIONS (apenas no Home) ============
   const QuickActions = () => (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
       <button
@@ -367,7 +395,7 @@ export default function Home() {
         </div>
         <div className="min-w-0">
           <div className="font-bold text-xs text-blue-300">Rios · ANA</div>
-          <div className="text-[10px] text-muted-foreground truncate">Nível de rios</div>
+          <div className="text-[10px] text-muted-foreground truncate">estações de referência</div>
         </div>
       </button>
       <button
@@ -379,7 +407,7 @@ export default function Home() {
         </div>
         <div className="min-w-0">
           <div className="font-bold text-xs text-cyan-300">Satélites</div>
-          <div className="text-[10px] text-muted-foreground truncate">GOES · Starlink</div>
+          <div className="text-[10px] text-muted-foreground truncate">TLE · portais oficiais</div>
         </div>
       </button>
       <button
@@ -391,7 +419,7 @@ export default function Home() {
         </div>
         <div className="min-w-0">
           <div className="font-bold text-xs text-emerald-300">Bússola</div>
-          <div className="text-[10px] text-muted-foreground truncate">100% offline</div>
+          <div className="text-[10px] text-muted-foreground truncate">sensor local</div>
         </div>
       </button>
       <button
@@ -415,7 +443,7 @@ export default function Home() {
         </div>
         <div className="min-w-0">
           <div className="font-bold text-xs text-amber-300">Defesa Civil</div>
-          <div className="text-[10px] text-muted-foreground truncate">CEDEC · 199</div>
+          <div className="text-[10px] text-muted-foreground truncate">199 · canais oficiais</div>
         </div>
       </button>
       <button
@@ -427,13 +455,12 @@ export default function Home() {
         </div>
         <div className="min-w-0">
           <div className="font-bold text-xs text-emerald-300">Mapa</div>
-          <div className="text-[10px] text-muted-foreground truncate">offline OSM</div>
+          <div className="text-[10px] text-muted-foreground truncate">cache OSM</div>
         </div>
       </button>
     </div>
   )
 
-  // ============ SIDEBAR ITEM (landscape/tablet/desktop) ============
   const SidebarItem = ({ t }: { t: TabDef }) => {
     const Icon = t.icon
     const active = tab === t.key
@@ -456,7 +483,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      {/* ============ HEADER (compacto em paisagem) ============ */}
       <header className="sticky top-0 z-40 backdrop-blur-xl bg-background/80 border-b border-border/40 landscape:py-1">
         <div className="px-3 sm:px-4 py-2 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
@@ -470,7 +496,6 @@ export default function Home() {
                 {cityName ? cityName : 'Resiliência Orbital'}
               </p>
             </div>
-            {/* Versão compacta para paisagem */}
             <div className="hidden landscape:block">
               <h1 className="text-xs font-bold leading-tight truncate">Aussy Ontech</h1>
               <p className="text-[8px] text-muted-foreground font-mono-jet uppercase tracking-wider truncate">
@@ -501,7 +526,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Localização atual — linha compacta */}
         <div className="border-t border-border/30 bg-secondary/20">
           <div className="px-3 sm:px-4 py-1 flex items-center justify-between gap-2 text-xs">
             <div className="flex items-center gap-1.5 text-muted-foreground min-w-0">
@@ -511,12 +535,13 @@ export default function Home() {
                   <>
                     {point.lat.toFixed(4)}°, {point.lon.toFixed(4)}°
                     {point.source === 'gps' && <span className="text-emerald-400 ml-1">· GPS</span>}
-                    {point.source === 'ip' && <span className="text-amber-400 ml-1">· IP</span>}
+                    {point.source === 'ip' && <span className="text-amber-400 ml-1">· IP aprox.</span>}
                     {point.source === 'manual' && <span className="text-signal ml-1">· manual</span>}
+                    {point.source === 'cached' && <span className="text-amber-300 ml-1">· última posição</span>}
                     {cityName && <span className="ml-1 text-muted-foreground/70 hidden xs:inline">· {cityName}</span>}
                   </>
                 ) : (
-                  'detectando localização...'
+                  'localização ainda não disponível'
                 )}
               </span>
             </div>
@@ -534,9 +559,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* ============ CORPO (sidebar + conteúdo) ============ */}
       <div className="flex-1 flex min-h-0">
-        {/* ============ SIDEBAR (landscape/tablet/desktop) ============ */}
         {useSidebar && (
           <aside className="hidden landscape:flex tablet:flex desktop:flex sticky top-0 h-screen w-56 lg:w-60 flex-shrink-0 border-r border-border/40 bg-background/60 backdrop-blur-xl flex-col">
             <div className="flex-1 overflow-y-auto p-2 space-y-0.5 pt-16 landscape:pt-14">
@@ -560,9 +583,7 @@ export default function Home() {
           </aside>
         )}
 
-        {/* ============ ÁREA DE CONTEÚDO ============ */}
         <div className="flex-1 min-w-0 flex flex-col">
-          {/* Quick actions — só na aba Home */}
           {tab === 'home' && (
             <section className="border-b border-border/30 bg-gradient-to-b from-signal/5 to-transparent">
               <div className="px-3 sm:px-4 py-3">
@@ -584,29 +605,27 @@ export default function Home() {
             </section>
           )}
 
-          {/* ============ CONTEÚDO DA ABA ============ */}
           <main className="flex-1 px-3 sm:px-4 py-3 sm:py-4 max-w-5xl mx-auto w-full pb-24 landscape:pb-4">
             {tabContent[tab]}
           </main>
 
-          {/* ============ FOOTER (somente desktop/landscape) ============ */}
           <footer className="mt-auto border-t border-border/40 bg-background/60 hidden landscape:block">
             <div className="px-4 py-3 text-xs text-muted-foreground space-y-1.5 max-w-5xl mx-auto">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <img src="/icon-192.svg" alt="" className="w-5 h-5" />
-                  <span className="font-mono-jet">Aussy Ontech · v7</span>
+                  <span className="font-mono-jet">Aussy Ontech · SW v8</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="font-mono-jet text-[10px]">NORAD · ANATEL · INMET · CEMADEN · CPTEC · INPE · ANA · IBGE · USGS · NASA EONET · SEDEC</span>
+                  <span className="font-mono-jet text-[10px]">CelesTrak · INMET · CEMADEN · CPTEC/INPE · ANA · IBGE · USGS · NASA EONET · Defesa Civil · OSM</span>
                 </div>
               </div>
               <div className="pt-2 border-t border-border/30 leading-relaxed">
                 <p className="text-[10px]">
-                  <strong className="text-foreground">Aviso técnico:</strong> Este protótipo orquestra dados reais e públicos — satélites (NORAD/Celestrak), torres (ANATEL ERB-Web), alertas (INMET/CEMADEN), queimadas (INPE), clima (CPTEC), rios (ANA/SNIRH), municípios (IBGE), sismos (USGS), eventos naturais (NASA EONET), Defesa Civil (SEDEC) e geolocalização (OpenStreetMap). SOS via satélite real só está disponível em iPhone 14+ ou Android compatíveis.
+                  <strong className="text-foreground">Aviso técnico:</strong> O Aussy combina fontes externas, última cópia válida em cache, bases locais e camadas demonstrativas explicitamente rotuladas. ERBs do módulo de cobertura são sintéticas; ANA nesta build fornece referências de estações sem nível ao vivo; posições orbitais são aproximações derivadas de TLE. Dados externos podem ficar indisponíveis. O Aussy não cria conectividade via satélite e não substitui serviços oficiais de emergência.
                 </p>
                 <p className="text-[9px] text-muted-foreground/70 mt-1">
-                  Conteúdo de primeiros socorros baseado em protocolos SAMU/Cruz Vermelha — não substitui atendimento médico. Em emergência real, ligue 192.
+                  Conteúdo de primeiros socorros é informativo e não substitui atendimento médico. Em emergência real, use os números oficiais apropriados, como SAMU 192, Polícia 190 ou Bombeiros 193.
                 </p>
               </div>
             </div>
@@ -614,7 +633,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ============ BOTTOM NAVIGATION (apenas mobile portrait) ============ */}
       {!useSidebar && (
         <nav
           className="fixed bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur-xl border-t border-border/40"
@@ -645,7 +663,6 @@ export default function Home() {
                 </button>
               )
             })}
-            {/* Botão "Mais" */}
             <button
               onClick={() => setMoreOpen(true)}
               className={`flex flex-col items-center justify-center gap-0.5 py-1.5 px-1 rounded-lg transition-all active:scale-95 ${
@@ -660,7 +677,6 @@ export default function Home() {
         </nav>
       )}
 
-      {/* ============ SHEET: Mais opções (mobile) ============ */}
       <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
         <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto">
           <SheetHeader>
@@ -693,9 +709,9 @@ export default function Home() {
                     <div className="text-sm font-bold">{t.label}</div>
                     <div className="text-[10px] text-muted-foreground">
                       {t.key === 'natureza' && 'CEMADEN · Rios · Fauna'}
-                      {t.key === 'satellites' && 'Starlink · GOES-16'}
+                      {t.key === 'satellites' && 'TLE · CPTEC/INPE'}
                       {t.key === 'sensores' && 'Bússola · Altímetro'}
-                      {t.key === 'defesa' && 'CEDEC · 199'}
+                      {t.key === 'defesa' && '199 · canais oficiais'}
                       {t.key === 'tools' && 'Survival · Frases'}
                     </div>
                   </div>
@@ -706,10 +722,8 @@ export default function Home() {
         </SheetContent>
       </Sheet>
 
-      {/* ============ FAB (acima da bottom nav) — posicionamento próprio ============ */}
       <QuickShare initialPoint={point} />
 
-      {/* ============ PWA INSTALL BANNER (deferred prompt) ============ */}
       {showInstallBanner && installPrompt && (
         <div
           className="fixed left-3 right-3 z-50 animate-in slide-in-from-bottom"
@@ -728,7 +742,7 @@ export default function Home() {
               <div className="flex-1 min-w-0">
                 <div className="font-bold text-sm text-foreground">Instalar Aussy Ontech</div>
                 <div className="text-[10px] text-muted-foreground">
-                  Acesso rápido + 100% offline
+                  Acesso rápido + recursos preparados para offline
                 </div>
               </div>
               <button
@@ -754,7 +768,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* ============ QR LOCATION SHEET ============ */}
       <QrLocation open={qrLocOpen} onOpenChange={setQrLocOpen} initialPoint={point} />
     </div>
   )
