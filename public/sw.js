@@ -5,7 +5,9 @@ const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const EMERGENCY_CACHE = `${CACHE_VERSION}-emergency`;
 const SATELLITE_CACHE = `${CACHE_VERSION}-satellites`;
-const OSM_TILES_CACHE = 'aussy-v2-osm-tiles'; // nome estável: preserva mapas entre upgrades
+const OSM_TILES_CACHE = 'aussy-v2-osm-tiles'; // nome estável: preserva tiles já visualizados entre upgrades
+const OSM_TILE_META_CACHE = 'aussy-osm-tile-meta-v1';
+const OSM_MIN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const APP_SHELL = [
   '/',
@@ -260,6 +262,38 @@ async function cacheFirst(request, cacheName) {
   }
 }
 
+async function osmTileCache(request) {
+  const tileCache = await caches.open(OSM_TILES_CACHE);
+  const metaCache = await caches.open(OSM_TILE_META_CACHE);
+  const cached = await tileCache.match(request);
+  let cachedAt = 0;
+
+  try {
+    const metadata = await metaCache.match(request);
+    if (metadata) cachedAt = Number(await metadata.text()) || 0;
+  } catch {}
+
+  const freshEnough = cached && cachedAt > 0 && (Date.now() - cachedAt) < OSM_MIN_TTL_MS;
+  if (freshEnough) return cached;
+
+  try {
+    // Fetch sem no-store/no-cache: o navegador pode honrar Cache-Control/Etag do OSM.
+    const response = await fetch(request);
+    if (isCacheableResponse(response)) {
+      await tileCache.put(request, response.clone());
+      await metaCache.put(request, new Response(String(Date.now()), {
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      }));
+    }
+    return response;
+  } catch {
+    // Fora da rede, um tile previamente visualizado continua disponível mesmo
+    // depois da janela de revalidação. Nunca buscamos tiles não visualizados.
+    if (cached) return cached;
+    return new Response('', { status: 504, statusText: 'Offline' });
+  }
+}
+
 async function networkFirst(request, cacheName, fallback) {
   try {
     const response = await fetch(request);
@@ -347,13 +381,8 @@ self.addEventListener('fetch', (event) => {
   if (!url.protocol.startsWith('http')) return;
   if (url.pathname.startsWith('/_next/webpack-hmr')) return;
 
-  if (
-    url.hostname === 'tile.openstreetmap.org' ||
-    url.hostname === 'a.tile.openstreetmap.org' ||
-    url.hostname === 'b.tile.openstreetmap.org' ||
-    url.hostname === 'c.tile.openstreetmap.org'
-  ) {
-    event.respondWith(cacheFirst(request, OSM_TILES_CACHE));
+  if (url.hostname === 'tile.openstreetmap.org') {
+    event.respondWith(osmTileCache(request));
     return;
   }
 
@@ -446,4 +475,4 @@ self.addEventListener('periodicsync', (event) => {
   if (event.tag === 'aussy-refresh') event.waitUntil(precacheEmergency());
 });
 
-console.log('[SW] Aussy Ontech v8 — cold boot + posição real + last-known-good cache');
+console.log('[SW] Aussy Ontech v8 — cold boot + posição real + last-known-good cache + OSM passivo');
