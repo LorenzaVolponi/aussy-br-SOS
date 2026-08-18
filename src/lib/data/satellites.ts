@@ -19,7 +19,7 @@ export interface SatelliteConstellation {
   partners: string[];
   coverage: string;
   status: 'operational' | 'testing' | 'planned' | 'limited' | 'unknown';
-  launchYear: number | null;
+  launchYear: string;
   services: string[];
   celestrakGroup?: string;
   description: string;
@@ -33,6 +33,7 @@ export interface SatelliteConstellation {
 
 const MUTABLE_NOTICE =
   'não verificado nesta build — confirme diretamente na fonte oficial antes de decisão operacional ou comercial';
+const MUTABLE_SHORT = 'não verificado nesta build';
 
 const CATALOG_DESCRIPTION =
   'Referência local de identidade. Frota ativa, cobertura, parceiros, serviços, compatibilidade D2D/D2C, aparelhos, preço e disponibilidade no Brasil não são confirmados nesta build.';
@@ -56,7 +57,7 @@ function localReference(input: {
     partners: [],
     coverage: MUTABLE_NOTICE,
     status: 'unknown',
-    launchYear: null,
+    launchYear: MUTABLE_SHORT,
     services: [],
     description: CATALOG_DESCRIPTION,
     techDetails: MUTABLE_NOTICE,
