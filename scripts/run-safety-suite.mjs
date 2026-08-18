@@ -5,6 +5,7 @@ import process from 'node:process'
 const gates = [
   ['Repository invariants', 'scripts/verify-repo.mjs'],
   ['Service Worker runtime', 'scripts/test-sw-runtime.mjs'],
+  ['Service Worker safety epoch', 'scripts/test-sw-safety-epoch.mjs'],
   ['INMET integrity', 'scripts/test-inmet-integrity.mjs'],
   ['API trust', 'scripts/test-api-trust.mjs'],
   ['OSM policy', 'scripts/test-osm-policy.mjs'],
@@ -18,6 +19,7 @@ const gates = [
   ['Fauna safety', 'scripts/test-fauna-safety.mjs'],
   ['Satellite catalog trust', 'scripts/test-satellite-catalog-trust.mjs'],
   ['CEMADEN safety', 'scripts/test-cemaden-safety.mjs'],
+  ['Readiness contract', 'scripts/test-readiness-contract.mjs'],
 ]
 
 let failures = 0

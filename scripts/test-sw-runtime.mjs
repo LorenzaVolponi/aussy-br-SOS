@@ -128,23 +128,25 @@ async function test(name, fn) {
   }
 }
 
-await test('install precaches shell, Next chunks and emergency contacts', async () => {
+await test('install precaches shell, Next chunks and current emergency safety content', async () => {
   await dispatchWait('install')
   assert.equal(skipWaitingCount, 1)
-  const staticCache = await caches.open('aussy-v8-static')
+  const staticCache = await caches.open('aussy-v9-static')
   assert.ok(await staticCache.match('/'))
   assert.ok(await staticCache.match('/_next/static/chunks/app.js'))
   assert.ok(await staticCache.match('/_next/static/css/app.css'))
-  assert.ok(await (await caches.open('aussy-v8-emergency')).match('/api/emergency/contacts'))
+  const emergencyCache = await caches.open('aussy-v9-emergency')
+  assert.ok(await emergencyCache.match('/api/emergency/contacts'))
+  assert.ok(await emergencyCache.match('/api/emergency/first-aid'))
 })
 
 await test('activate removes legacy caches and preserves stable OSM tiles', async () => {
-  await (await caches.open('aussy-v7-static')).put('/old', new Response('old'))
+  await (await caches.open('aussy-v8-static')).put('/old', new Response('old'))
   await (await caches.open('aussy-v2-osm-tiles')).put('https://tile.openstreetmap.org/1/2/3.png', new Response('tile-old'))
   await dispatchWait('activate')
   assert.equal(claimCount, 1)
   const keys = await caches.keys()
-  assert.ok(!keys.includes('aussy-v7-static'))
+  assert.ok(!keys.includes('aussy-v8-static'))
   assert.ok(keys.includes('aussy-v2-osm-tiles'))
 })
 
@@ -181,6 +183,19 @@ await test('offline forecast without cache returns shape-safe fallback', async (
   assert.equal(body.days.length, 0)
   assert.equal(body.dataQuality, 'unavailable')
   assert.equal(body.offline, true)
+  online = true
+})
+
+await test('offline CEMADEN fallback remains portal-only and never means zero alerts', async () => {
+  online = false
+  const response = await dispatchFetch('/api/cemaden/alerts')
+  const body = await response.json()
+  assert.equal(response.status, 200)
+  assert.equal(body.dataQuality, 'official-portal')
+  assert.equal(body.automationAvailable, false)
+  assert.equal(Array.isArray(body.portals), true)
+  assert.equal(body.portals.length, 3)
+  assert.match(body.note, /NÃO significa ausência de alertas ativos/)
   online = true
 })
 
@@ -246,7 +261,7 @@ await test('PRECACHE_LOCATION warms all location endpoints with real coordinates
   assert.equal(reply.ok, true)
   assert.equal(reply.total, 8)
   assert.equal(reply.succeeded, 8)
-  const runtime = await caches.open('aussy-v8-runtime')
+  const runtime = await caches.open('aussy-v9-runtime')
   assert.ok(await runtime.match('/api/cptec/forecast?lat=-25.42840&lon=-49.27330'))
   assert.ok(await runtime.match('/api/geocode?lat=-25.42840&lon=-49.27330'))
   assert.equal(await runtime.match('/api/ibge/municipios?lat=-25.42840&lon=-49.27330&raio=100&limit=15'), undefined)

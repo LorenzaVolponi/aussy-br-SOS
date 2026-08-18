@@ -15,21 +15,8 @@ export const READINESS_SNAPSHOT = {
       summary: 'type-check, lint e next build ainda não foram executados em runner funcional após o hardening.',
       trackingIssue: 4,
     },
-    {
-      id: 'service-worker-safety-epoch-v8',
-      severity: 'blocker',
-      summary: 'O Service Worker ainda usa o epoch aussy-v8 após reescritas safety-critical; instalações totalmente offline podem manter conteúdo anterior.',
-      trackingIssue: 26,
-    },
   ],
-  mitigations: [
-    {
-      id: 'cemaden-undocumented-api-blocked',
-      status: 'temporary-safety-block',
-      summary: 'A automação CEMADEN legada está bloqueada por boundary 503/no-store até migração para contrato oficial.',
-      trackingIssue: 23,
-    },
-  ],
+  mitigations: [],
   trust: {
     firstAid: 'clinically-curated-static',
     survival: 'source-bounded-static',
@@ -40,11 +27,13 @@ export const READINESS_SNAPSHOT = {
     satelliteTle: 'live-or-last-known-good-approx-position',
     satelliteCatalog: 'unverified-static',
     brazilD2DRegulation: 'verified-static-2026-08-18',
-    cemaden: 'automation-blocked-official-portals-only',
+    cemaden: 'official-portal-only',
     osmTiles: 'passive-viewed-tile-cache',
+    serviceWorkerSafetyEpoch: 'aussy-v9',
   },
   validation: {
     zeroDependencySafetySuite: 'implemented-not-run-on-functional-github-runner',
+    serviceWorkerV9Contract: 'implemented-not-run-on-functional-github-runner',
     typeCheck: 'not-run-after-hardening',
     lint: 'not-run-after-hardening',
     nextBuild: 'not-run-after-hardening',

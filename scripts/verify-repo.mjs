@@ -1,26 +1,21 @@
-import { readdir, readFile } from 'node:fs/promises'
-import { join, relative } from 'node:path'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 import process from 'node:process'
 
-const root = process.cwd()
-const ignoredDirs = new Set(['.git', '.next', 'node_modules', 'coverage', '.vercel'])
 const failures = []
+const root = process.cwd()
 
-async function walk(dir) {
-  const entries = await readdir(dir, { withFileTypes: true })
-  for (const entry of entries) {
-    if (entry.isDirectory() && ignoredDirs.has(entry.name)) continue
-    const absolute = join(dir, entry.name)
-    if (entry.isDirectory()) {
-      await walk(absolute)
-      continue
-    }
-    if (entry.name.endsWith(':Zone.Identifier')) failures.push(`Windows metadata tracked: ${relative(root, absolute)}`)
+function read(path) {
+  try {
+    return readFileSync(join(root, path), 'utf8')
+  } catch {
+    failures.push(`${path} missing or unreadable`)
+    return ''
   }
 }
 
-async function assertFileContains(path, fragments) {
-  const content = await readFile(join(root, path), 'utf8')
+function requireFragments(path, fragments) {
+  const content = read(path)
   for (const fragment of fragments) {
     if (!content.includes(fragment)) failures.push(`${path} missing invariant: ${fragment}`)
   }
@@ -33,112 +28,101 @@ function forbid(path, content, fragments) {
   }
 }
 
-await walk(root)
+function findZoneIdentifier(dir = root) {
+  const ignored = new Set(['.git', '.next', 'node_modules', 'coverage', '.vercel'])
+  const stack = [dir]
+  while (stack.length) {
+    const current = stack.pop()
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      if (ignored.has(entry.name)) continue
+      const full = join(current, entry.name)
+      if (entry.isDirectory()) stack.push(full)
+      else if (entry.name.endsWith(':Zone.Identifier')) return full
+    }
+  }
+  return null
+}
 
-await assertFileContains('package.json', [
+const packageJson = requireFragments('package.json', [
+  '"verify:repo": "node scripts/verify-repo.mjs"',
   '"test:sw": "node scripts/test-sw-runtime.mjs"',
   '"test:inmet": "node scripts/test-inmet-integrity.mjs"',
   '"test:api": "node scripts/test-api-trust.mjs"',
   '"test:osm": "node scripts/test-osm-policy.mjs"',
-  '"verify:repo": "node scripts/verify-repo.mjs"',
 ])
+forbid('package.json', packageJson, ['npm install --force', '--legacy-peer-deps'])
 
-const swRuntimeTest = await assertFileContains('scripts/test-sw-runtime.mjs', [
-  "fs.readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8')",
-  'cold boot navigation returns cached app shell',
-  'last-known-good survives degraded upstream',
-  'offline forecast without cache returns shape-safe fallback',
-  'offline emergency fallback retains national numbers',
-  'OSM tile viewed online is reused offline',
-  'OSM tile cache avoids refetch inside 7-day window and revalidates after it',
-  'Service Worker only intercepts canonical OSM tile hostname',
-  'PRECACHE_LOCATION rejects invalid coordinates',
-  'PRECACHE_LOCATION warms all location endpoints with real coordinates',
-  'CLEAR_CACHE explicitly clears all Aussy caches',
-])
-forbid('scripts/test-sw-runtime.mjs', swRuntimeTest, [
-  '/tmp/aussy-harness/sw.js',
-  'Math.random()',
-])
-
-await assertFileContains('scripts/test-inmet-integrity.mjs', [
-  'INMET integrity gate OK',
-  "status === 'operante' || status === 'operativa'",
-  'chuva_24h: null',
-])
-
-await assertFileContains('scripts/test-api-trust.mjs', [
-  'API trust gate OK',
-  'closed: Boolean(closedAt)',
-  "dataQuality: 'reference-only'",
-])
-
-await assertFileContains('scripts/test-osm-policy.mjs', [
-  'OSM tile policy gate OK',
-  '© OpenStreetMap contributors',
-  'const OSM_MIN_TTL_MS = 7 * 24 * 60 * 60 * 1000',
-  "{ key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' }",
-])
-
-const qualityWorkflow = await assertFileContains('.github/workflows/quality.yml', [
-  'Service Worker behavioral runtime tests',
-  'node scripts/test-sw-runtime.mjs',
-  'INMET data-integrity tests',
-  'node scripts/test-inmet-integrity.mjs',
-  'API trust tests',
-  'node scripts/test-api-trust.mjs',
-  'OSM tile policy tests',
-  'node scripts/test-osm-policy.mjs',
+const quality = requireFragments('.github/workflows/quality.yml', [
   "bun-version: '1.3.14'",
+  'node scripts/test-sw-runtime.mjs',
+  'node scripts/test-inmet-integrity.mjs',
+  'node scripts/test-api-trust.mjs',
+  'node scripts/test-osm-policy.mjs',
   'bun install',
   'bun run verify:repo',
   'bun run type-check',
   'bun run lint',
   'bun run build',
 ])
-const installStep = qualityWorkflow.indexOf('bun install')
+const installIndex = quality.indexOf('bun install')
 for (const command of [
   'node scripts/test-sw-runtime.mjs',
   'node scripts/test-inmet-integrity.mjs',
   'node scripts/test-api-trust.mjs',
   'node scripts/test-osm-policy.mjs',
 ]) {
-  const step = qualityWorkflow.indexOf(command)
-  if (step < 0 || installStep < 0 || step > installStep) {
-    failures.push(`.github/workflows/quality.yml must run ${command} before dependency installation`)
+  const index = quality.indexOf(command)
+  if (index < 0 || installIndex < 0 || index > installIndex) {
+    failures.push(`quality workflow must run ${command} before dependency installation`)
   }
 }
 
-const sw = await assertFileContains('public/sw.js', [
-  "const CACHE_VERSION = 'aussy-v8'",
+for (const path of [
+  'scripts/run-safety-suite.mjs',
+  '.github/workflows/safety-suite.yml',
+  'scripts/release-readiness.mjs',
+  '.github/workflows/release-readiness.yml',
+  'scripts/test-readiness-contract.mjs',
+  '.github/workflows/readiness-contract.yml',
+  'scripts/test-cemaden-safety.mjs',
+  '.github/workflows/cemaden-safety.yml',
+  'scripts/test-satellite-catalog-trust.mjs',
+  'scripts/test-first-aid-safety.mjs',
+  'scripts/test-survival-safety.mjs',
+  'scripts/test-survival-ui-safety.mjs',
+  'scripts/test-fauna-safety.mjs',
+  'scripts/test-offline-fallback-contracts.mjs',
+  'scripts/test-orbital-integrity.mjs',
+  'scripts/test-emergency-precache.mjs',
+  'scripts/test-client-surface.mjs',
+]) {
+  if (!existsSync(join(root, path))) failures.push(`${path} missing`)
+}
+
+const sw = requireFragments('public/sw.js', [
+  "const CACHE_VERSION = 'aussy-v9'",
   "const OSM_TILES_CACHE = 'aussy-v2-osm-tiles'",
   "const OSM_TILE_META_CACHE = 'aussy-osm-tile-meta-v1'",
   'const OSM_MIN_TTL_MS = 7 * 24 * 60 * 60 * 1000',
+  "const firstAid = await emergencyCache.match('/api/emergency/first-aid')",
+  'Boolean(emergencyContacts) && Boolean(firstAid)',
   'k !== OSM_TILES_CACHE',
-  '/_next/static/',
   'PRECACHE_SHELL',
   'PRECACHE_EMERGENCY',
   'PRECACHE_LOCATION',
-  'locationPrecacheUrls',
-  'responseIsLiveAndUsable',
-  'X-Aussy-Upstream-Degraded',
-  "response.type === 'opaque'",
-  'currentCachesReady',
-  'async function osmTileCache(request)',
   "if (url.hostname === 'tile.openstreetmap.org')",
-  'event.respondWith(osmTileCache(request))',
+  "dataQuality: 'official-portal'",
+  'Lista vazia NÃO significa ausência de alertas ativos',
+  "console.log('[SW] Install v9'",
 ])
 forbid('public/sw.js', sw, [
-  "'User-Agent'",
-  'aussy-v2-emergency',
-  'aussy-v2-statics',
-  '/api/queimadas/focos?lat=-15.7801',
-  '/api/cptec/forecast?lat=-15.7801',
-  '/api/ana/rios?lat=-15.7801',
+  "const CACHE_VERSION = 'aussy-v8'",
   "url.hostname === 'a.tile.openstreetmap.org'",
   "url.hostname === 'b.tile.openstreetmap.org'",
   "url.hostname === 'c.tile.openstreetmap.org'",
-  'cacheFirst(request, OSM_TILES_CACHE)',
+  '/api/queimadas/focos?lat=-15.7801',
+  '/api/cptec/forecast?lat=-15.7801',
+  "'User-Agent'",
 ])
 try {
   new Function(sw)
@@ -146,262 +130,98 @@ try {
   failures.push(`public/sw.js syntax error: ${error instanceof Error ? error.message : String(error)}`)
 }
 
-const chunkWarmer = await assertFileContains('src/components/aussy/offline-chunk-warmer.tsx', [
-  "const WARM_VERSION = 'aussy-offline-modules-v8'",
-  "type: 'PRECACHE_LOCATION'",
-  'navigator.geolocation.getCurrentPosition',
-  "import('@/components/aussy/satellite-tracker')",
-  "import('@/components/aussy/defesa-civil')",
+const swRuntime = requireFragments('scripts/test-sw-runtime.mjs', [
+  "caches.open('aussy-v9-static')",
+  "caches.open('aussy-v9-emergency')",
+  "caches.open('aussy-v9-runtime')",
+  'current emergency safety content',
+  'offline CEMADEN fallback remains portal-only',
+  'OSM tile cache avoids refetch inside 7-day window and revalidates after it',
+  'PRECACHE_LOCATION warms all location endpoints with real coordinates',
 ])
-forbid('src/components/aussy/offline-chunk-warmer.tsx', chunkWarmer, ['-15.7801', '-47.9292'])
+forbid('scripts/test-sw-runtime.mjs', swRuntime, ["caches.open('aussy-v8-runtime')"])
 
-const offlineManager = await assertFileContains('src/components/aussy/offline-manager.tsx', [
-  "sendWorkerCommand('PRECACHE_SHELL')",
-  "sendWorkerCommand('PRECACHE_EMERGENCY')",
-  'MessageChannel',
-  'App shell + JS/CSS em cache',
-  'Tiles OSM não são pré-baixados',
-  'apenas tiles efetivamente visualizados podem permanecer em cache',
+const cemaden = requireFragments('src/app/api/cemaden/alerts/route.ts', [
+  "automationAvailable: false",
+  "dataQuality: 'official-portal'",
+  "verifiedAt: VERIFIED_AT",
+  'Lista vazia NÃO significa ausência de alertas ativos',
+  'alertas-em-tempo-real',
+  'previsao-de-riscos',
+  'georisk.cemaden.gov.br',
 ])
-forbid('src/components/aussy/offline-manager.tsx', offlineManager, [
-  'aussy-v2-emergency',
-  'aussy-v2-statics',
-  'incluindo mapas baixados',
+forbid('src/app/api/cemaden/alerts/route.ts', cemaden, [
+  'cemaden.gov.br/api/v1/monitoramento/alertas',
+  'cemaden.gov.br/api/alerta/municipios.json',
+  "dataQuality: 'live'",
 ])
+if (existsSync(join(root, 'src/proxy.ts'))) failures.push('temporary src/proxy.ts must be removed after final CEMADEN migration')
 
-const offlineMap = await assertFileContains('src/components/aussy/offline-map.tsx', [
-  'Mapa OSM · cache de visualização',
-  '© OpenStreetMap contributors',
-  'https://www.openstreetmap.org/copyright',
-  'O Aussy não pré-baixa áreas nem pilhas de zoom',
-  'initialLat: number',
-  'initialLon: number',
+const cemadenUi = requireFragments('src/components/aussy/cemaden-alerts.tsx', [
+  'PORTAL OFICIAL',
+  'CEMADEN / MCTI — canais oficiais',
+  'cemaden.portals.map',
+  'Aguardando localização válida',
+  'Nenhuma cidade padrão é assumida',
 ])
-forbid('src/components/aussy/offline-map.tsx', offlineMap, [
-  'handleDownloadOffline',
-  'Baixar offline',
-  'initialLat = -15.7801',
-  'initialLon = -47.9292',
-  'CC-BY-SA',
-  'Funciona 100% offline após download',
-])
-
-const nextConfig = await assertFileContains('next.config.ts', [
-  "'https://tile.openstreetmap.org'",
-  "{ key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' }",
-])
-forbid('next.config.ts', nextConfig, ['https://*.tile.openstreetmap.org'])
-
-const geolocation = await assertFileContains('src/hooks/use-geolocation.ts', [
-  "const STORAGE_KEY = 'aussy_last_location_v1'",
-  "source: 'cached'",
-  'const detect = useCallback',
-  "fetch('/api/network/status'",
-])
-forbid('src/hooks/use-geolocation.ts', geolocation, ['https://ipapi.co/json/'])
-
-const networkStatus = await assertFileContains('src/app/api/network/status/route.ts', [
-  "const CONNECTIVITY_TARGET = 'https://www.google.com/generate_204'",
-  'geo: latitude !== null && longitude !== null',
-  'Nenhuma URL fornecida pelo cliente é buscada pelo servidor',
-])
-forbid('src/app/api/network/status/route.ts', networkStatus, ["searchParams.get('url')"])
-
-await assertFileContains('src/hooks/use-network.ts', [
-  '!navigator.onLine',
-  "res.headers.get('X-Aussy-Cached')",
-  'new AbortController()',
+forbid('src/components/aussy/cemaden-alerts.tsx', cemadenUi, [
+  'Nenhum monitoramento ativo no momento',
+  'alerta(s) CEMADEN ativos',
+  'const lat = point?.lat ?? -15.7801',
+  'const lon = point?.lon ?? -47.9292',
+  'else fetchQueimadas()',
 ])
 
-const networkMonitor = await assertFileContains('src/components/aussy/network-monitor.tsx', [
-  'if (!network.online)',
-  "r.headers.get('X-Aussy-Cached')",
-  'network.online && serverStatus?.externalIp',
+const satellites = requireFragments('src/lib/data/satellites.ts', [
+  "number: '188', name: 'CVV — Centro de Valorização da Vida'",
+  "verifiedAt: '2026-08-18'",
+  "dataQuality: 'unverified-static'",
+  'operatorsInNegotiation: []',
 ])
-forbid('src/components/aussy/network-monitor.tsx', networkMonitor, ['Recebe alertas do governo'])
+forbid('src/lib/data/satellites.ts', satellites, ["name: 'Linha da Vida'"])
 
-await assertFileContains('src/app/layout.tsx', [
-  '<OfflineChunkWarmer />',
-  "window.addEventListener('online'",
-  "worker.postMessage({ type: 'PRECACHE_SHELL' })",
-  "worker.postMessage({ type: 'PRECACHE_EMERGENCY' })",
+const contacts = requireFragments('src/app/api/emergency/contacts/route.ts', [
+  "dataQuality: 'verified-static'",
+  "verifiedAt: '2026-08-18'",
+  "number: '40199'",
+  'Defesa Civil Alerta',
+])
+forbid('src/app/api/emergency/contacts/route.ts', contacts, [
+  "verifiedAt: '2026-08-17'",
+  'Não disponível oficialmente no Brasil em 17/08/2026',
 ])
 
-const page = await assertFileContains('src/app/page.tsx', [
+const readiness = requireFragments('src/lib/readiness-state.ts', [
+  'releaseReady: false',
+  "id: 'dependency-lock-missing'",
+  "id: 'full-build-not-executed'",
+  "cemaden: 'official-portal-only'",
+  "serviceWorkerSafetyEpoch: 'aussy-v9'",
+])
+forbid('src/lib/readiness-state.ts', readiness, [
+  "id: 'service-worker-safety-epoch-v8'",
+  "id: 'cemaden-undocumented-api-blocked'",
+])
+
+const page = requireFragments('src/app/page.tsx', [
   'Aguardando localização válida',
   'O Aussy não usa uma cidade padrão como se fosse sua localização',
-  "point.source === 'cached'",
   'Acesso rápido + recursos preparados para offline',
-  'Aussy Ontech · SW v8',
-  'ERBs do módulo de cobertura são sintéticas',
   'O Aussy não cria conectividade via satélite',
 ])
 forbid('src/app/page.tsx', page, [
   'const observerLat = point?.lat ?? -15.7801',
   'const observerLon = point?.lon ?? -47.9292',
   '100% offline',
-  'Este protótipo orquestra dados reais e públicos',
-  'SOS via satélite real só está disponível',
-  '>Nível de rios<',
 ])
 
-const emergencyContacts = await assertFileContains('src/app/api/emergency/contacts/route.ts', [
-  "verifiedAt: '2026-08-17'",
-  "channel: 'automático'",
-  "number: '40199'",
-  'Não disponível oficialmente no Brasil em 17/08/2026',
-  'O Aussy não cria conectividade por satélite',
-])
-forbid('src/app/api/emergency/contacts/route.ts', emergencyContacts, [
-  'US$ 14.95/mês',
-  'Samsung Galaxy S22+',
-  'Snapdragon Satellite',
-  'channel: 4370',
-])
-
-const emergencyUi = await assertFileContains('src/components/aussy/emergency-sos.tsx', [
-  'atalho de discagem',
-  'a chamada telefônica ainda exige serviço de voz/rede disponível',
-  'SOS via satélite do aparelho',
-  'contacts.satelliteSos.apple.device',
-  'contacts.satelliteSos.android.device',
-  'contacts.smsBroadcast.description',
-  'SMS por CEP:',
-  'Checklist local de preparação',
-])
-forbid('src/components/aussy/emergency-sos.tsx', emergencyUi, [
-  'Android (Snapdragon Sat.)',
-  'Ativo em:',
-  'funciona offline',
-  'Recomendado pela Defesa Civil e ANATEL',
-])
-const emergencyLatUses = (emergencyUi.match(/observerLat/g) || []).length
-const emergencyLonUses = (emergencyUi.match(/observerLon/g) || []).length
-if (emergencyLatUses > 1 || emergencyLonUses > 1) {
-  failures.push('src/components/aussy/emergency-sos.tsx must not use location props operationally until a verified location-dependent SOS flow exists')
-}
-
-const cemaden = await assertFileContains('src/app/api/cemaden/alerts/route.ts', [
-  'Nenhum alerta sintético foi gerado',
-  "dataQuality: 'unavailable'",
-  'painelalertas.cemaden.gov.br',
-])
-forbid('src/app/api/cemaden/alerts/route.ts', cemaden, ['generateSimulatedAlerts', 'generateSimulated', 'alertasSazonais'])
-
-const forecast = await assertFileContains('src/app/api/cptec/forecast/route.ts', [
-  'Nenhuma previsão sintética foi gerada',
-  "days: []",
-  "dataQuality: 'unavailable'",
-])
-forbid('src/app/api/cptec/forecast/route.ts', forecast, ['Math.random', 'fallbackDays', 'Clima típico'])
-
-const satelliteImages = await assertFileContains('src/app/api/cptec/satellite/route.ts', [
-  "dataQuality: 'official-portal'",
-  'https://sigma.cptec.inpe.br/',
-  'Nenhuma URL de imagem é gerada por estimativa',
-])
-forbid('src/app/api/cptec/satellite/route.ts', satelliteImages, ['http://satellite1.cptec.inpe.br', 'goes16_4_br_', 'buildUrls()'])
-
-const fires = await assertFileContains('src/app/api/queimadas/focos/route.ts', [
-  'dataserver-coids.inpe.br/queimadas/queimadas/focos/csv/10min/',
-  'Nenhum foco sintético foi gerado',
-  "dataQuality: 'live-open-data'",
-])
-forbid('src/app/api/queimadas/focos/route.ts', fires, ['generateSimulatedFocos', 'Math.random', 'Hotspots conhecidos'])
-
-const earthquakes = await assertFileContains('src/app/api/earthquakes/route.ts', [
-  'Nenhum sismo histórico foi apresentado como evento atual',
-  "dataQuality: 'unavailable'",
-  'events: []',
-])
-forbid('src/app/api/earthquakes/route.ts', earthquakes, ['fallback-1', 'Caldas Novas, GO', 'Porto dos Gaúchos, MT'])
-
-const defesa = await assertFileContains('src/app/api/defesacivil/alertas/route.ts', [
-  "dataQuality: 'official-channels-only'",
-  "number: '40199'",
-  "number: '+55 61 2034-4611'",
-  'Nenhum alerta sazonal ou estimado',
-])
-forbid('src/app/api/defesacivil/alertas/route.ts', defesa, ['alertasSazonais', 'Estação chuvosa', 'Estação de queimadas'])
-
-const ana = await assertFileContains('src/app/api/ana/rios/route.ts', [
-  "dataQuality: 'reference-location-only'",
-  'nivel_atual: null',
-  "tendencia: 'desconhecido'",
-  'HidroWebservice',
-])
-forbid('src/app/api/ana/rios/route.ts', ana, [
-  'nivel_atual: 21.5',
-  "tendencia: 'subindo'",
-  'atualizado: new Date().toISOString()',
-])
-
-const tle = await assertFileContains('src/app/api/satellites/tle/route.ts', [
-  "weather: 'weather'",
-  "gnss: 'gps-ops'",
-  "dataQuality: 'live-tle-approx-position'",
-  'Sem TLE real confirmado nesta resposta',
-])
-forbid('src/app/api/satellites/tle/route.ts', tle, ['HARDCODED_TLES', 'CONSTELLATION_COUNTS', 'multiplier', 'newRaan'])
-
-const passes = await assertFileContains('src/app/api/satellites/passes/route.ts', [
-  'Nenhuma passagem é simulada',
-  'SGP4',
-  'passes: []',
-])
-forbid('src/app/api/satellites/passes/route.ts', passes, ['Math.random', 'slVisible', 'irVisible'])
-
-const orbitalUi = await assertFileContains('src/components/aussy/satellite-tracker.tsx', [
-  'Posição orbital aproximada',
-  'Estimativa, não rastreio operacional.',
-  'Acima do horizonte (est.)',
-  'Objetos no feed',
-  'Catálogo local de constelações',
-  'Referência local, não status em tempo real.',
-  'Confirmar no site oficial',
-])
-forbid('src/components/aussy/satellite-tracker.tsx', orbitalUi, [
-  'Rastreador Orbital em Tempo Real',
-  'Visíveis agora',
-  '{g.count}',
-  'Ativos / Total',
-  'Parceiros / Operadoras',
-  'Modelo de custo',
-])
-
-await assertFileContains('src/app/api/coverage/towers/route.ts', [
-  "towers: 'synthetic'",
-  "wifiPoints: 'sample'",
-  'não devem ser usadas para decisão operacional',
-])
-
-await assertFileContains('src/components/aussy/coverage-map.tsx', [
-  'quality="synthetic"',
-  'quality="sample"',
-  'não devem orientar deslocamento, segurança ou decisão operacional',
-])
-
-const coverageData = await assertFileContains('src/lib/data/coverage.ts', [
-  "const UNVERIFIED = 'não verificado nesta build'",
-  "referenceStatus: 'unverified-static'",
-  'verificar em fonte oficial antes de uso operacional',
-])
-for (const forbidden of ['~52.000 torres', '~48.000 torres', '~45.000 torres', "marketShare: '32%'", "marketShare: '30%'", "marketShare: '28%'"]) {
-  if (coverageData.includes(forbidden)) failures.push(`Coverage data contains unversioned statistic: ${forbidden}`)
-}
-
-const regulatory = await assertFileContains('src/components/aussy/regulatory-info.tsx', [
-  'quality="static"',
-  'confirme diretamente nas fontes oficiais',
-])
-for (const forbidden of ['Previsão realista:', 'prováveis pioneiros']) {
-  if (regulatory.includes(forbidden)) failures.push(`Regulatory UI contains unverified forecast language: ${forbidden}`)
-}
+const zoneFile = findZoneIdentifier()
+if (zoneFile) failures.push(`Windows metadata present: ${zoneFile}`)
 
 if (failures.length) {
-  console.error('\nAussy repository verification failed:\n')
+  console.error('Aussy repository invariants FAILED')
   for (const failure of failures) console.error(`- ${failure}`)
   process.exit(1)
 }
 
-console.log('Aussy repository invariants OK — zero-dependency gates, online/offline resilience, OSM policy, emergency UI, shell location, orbital trust and data-safety checks passed')
+console.log('Aussy repository invariants OK — SW v9, official CEMADEN portals, CVV 188, offline resilience and trust gates are aligned')

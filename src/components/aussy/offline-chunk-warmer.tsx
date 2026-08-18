@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react'
 
-const WARM_VERSION = 'aussy-offline-modules-v8'
+const WARM_VERSION = 'aussy-offline-modules-v9'
 const LOCATION_STORAGE_KEY = 'aussy_last_location_v1'
 
 async function waitForController(timeoutMs = 10000) {
