@@ -22,11 +22,13 @@ function forbidAll(path, content, fragments) {
 const dataPath = 'src/lib/data/first-aid.ts'
 const routePath = 'src/app/api/emergency/first-aid/route.ts'
 const baselinePath = 'docs/FIRST_AID_SAFETY_BASELINE.md'
+const uiPath = 'src/components/aussy/emergency-sos.tsx'
 
-const [data, route, baseline] = await Promise.all([
+const [data, route, baseline, ui] = await Promise.all([
   read(dataPath),
   read(routePath),
   read(baselinePath),
+  read(uiPath),
 ])
 
 requireAll(dataPath, data, [
@@ -100,10 +102,24 @@ requireAll(baselinePath, baseline, [
   'Ministério da Saúde',
 ])
 
+requireAll(uiPath, ui, [
+  'Conteúdo educativo — não substitui atendimento profissional',
+  'showFirstAid.sourceLabel',
+  'showFirstAid.verifiedAt',
+  'showFirstAid.sourceUrls.map',
+  'Abrir fonte oficial',
+  'Em urgência ou emergência, acione o SAMU 192',
+  'Ligar para SAMU — 192',
+])
+forbidAll(uiPath, ui, [
+  'Conteúdo revisado sem fonte',
+  'Substitui atendimento profissional',
+])
+
 if (failures.length) {
   console.error('\nFirst-aid clinical safety gate failed:\n')
   for (const failure of failures) console.error(`- ${failure}`)
   process.exit(1)
 }
 
-console.log('First-aid clinical safety gate OK — verified metadata and high-risk protocol invariants are protected')
+console.log('First-aid clinical safety gate OK — verified metadata, UI provenance and high-risk protocol invariants are protected')
