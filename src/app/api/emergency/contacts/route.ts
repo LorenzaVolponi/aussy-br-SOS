@@ -7,7 +7,8 @@ export const runtime = 'nodejs'
 export async function GET() {
   return NextResponse.json({
     country: 'Brasil',
-    verifiedAt: '2026-08-17',
+    dataQuality: 'verified-static',
+    verifiedAt: '2026-08-18',
     source: 'ANATEL / Ministério da Saúde / Defesa Civil Nacional / Apple Support / Google Pixel Help',
     sourceUrls: [
       'https://www.gov.br/anatel/pt-br/regulado/numeracao/codigos-nacionais/servicos-de-utilidade-publica-e-de-emergencia',
@@ -34,14 +35,14 @@ export async function GET() {
       apple: {
         device: 'iPhone 14 ou posterior compatível',
         service: 'SOS de Emergência via Satélite',
-        coverage: 'Não disponível oficialmente no Brasil em 17/08/2026',
-        note: 'A lista oficial da Apple não inclui o Brasil. A disponibilidade depende de região, regulamentação e requisitos do mercado.',
+        coverage: 'Não disponível oficialmente no Brasil em 18/08/2026',
+        note: 'A lista oficial da Apple consultada nesta data não inclui o Brasil. A disponibilidade depende de região, regulamentação e requisitos do mercado.',
       },
       android: {
         device: 'Pixel 9 ou posterior compatível, exceto Pixel 9a',
         service: 'Satellite SOS',
-        coverage: 'Não disponível oficialmente no Brasil em 17/08/2026',
-        note: 'A lista oficial do Google não inclui o Brasil. O recurso depende de dispositivo, software, região e cobertura do serviço.',
+        coverage: 'Não disponível oficialmente no Brasil em 18/08/2026',
+        note: 'A lista oficial do Google consultada nesta data não inclui o Brasil. O recurso depende de dispositivo, software, região e cobertura do serviço.',
       },
       limitations: 'Não conte com SOS via satélite de smartphone no Brasil sem confirmação no próprio dispositivo. O Aussy não cria conectividade por satélite e não substitui cobertura celular, serviços oficiais nem um comunicador satelital dedicado.',
     },
