@@ -11,6 +11,7 @@
     "test:sw": "node scripts/test-sw-runtime.mjs",
     "test:inmet": "node scripts/test-inmet-integrity.mjs",
     "test:api": "node scripts/test-api-trust.mjs",
+    "test:osm": "node scripts/test-osm-policy.mjs",
     "verify:repo": "node scripts/verify-repo.mjs"
   },
   "dependencies": {

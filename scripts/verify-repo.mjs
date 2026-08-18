@@ -35,8 +35,11 @@ function forbid(path, content, fragments) {
 
 await walk(root)
 
-const packageJson = await assertFileContains('package.json', [
+await assertFileContains('package.json', [
   '"test:sw": "node scripts/test-sw-runtime.mjs"',
+  '"test:inmet": "node scripts/test-inmet-integrity.mjs"',
+  '"test:api": "node scripts/test-api-trust.mjs"',
+  '"test:osm": "node scripts/test-osm-policy.mjs"',
   '"verify:repo": "node scripts/verify-repo.mjs"',
 ])
 
@@ -46,7 +49,9 @@ const swRuntimeTest = await assertFileContains('scripts/test-sw-runtime.mjs', [
   'last-known-good survives degraded upstream',
   'offline forecast without cache returns shape-safe fallback',
   'offline emergency fallback retains national numbers',
-  'OSM tile is cached online and reused offline',
+  'OSM tile viewed online is reused offline',
+  'OSM tile cache avoids refetch inside 7-day window and revalidates after it',
+  'Service Worker only intercepts canonical OSM tile hostname',
   'PRECACHE_LOCATION rejects invalid coordinates',
   'PRECACHE_LOCATION warms all location endpoints with real coordinates',
   'CLEAR_CACHE explicitly clears all Aussy caches',
@@ -56,24 +61,59 @@ forbid('scripts/test-sw-runtime.mjs', swRuntimeTest, [
   'Math.random()',
 ])
 
+await assertFileContains('scripts/test-inmet-integrity.mjs', [
+  'INMET integrity gate OK',
+  "status === 'operante' || status === 'operativa'",
+  'chuva_24h: null',
+])
+
+await assertFileContains('scripts/test-api-trust.mjs', [
+  'API trust gate OK',
+  'closed: Boolean(closedAt)',
+  "dataQuality: 'reference-only'",
+])
+
+await assertFileContains('scripts/test-osm-policy.mjs', [
+  'OSM tile policy gate OK',
+  '© OpenStreetMap contributors',
+  'const OSM_MIN_TTL_MS = 7 * 24 * 60 * 60 * 1000',
+  "{ key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' }",
+])
+
 const qualityWorkflow = await assertFileContains('.github/workflows/quality.yml', [
   'Service Worker behavioral runtime tests',
   'node scripts/test-sw-runtime.mjs',
+  'INMET data-integrity tests',
+  'node scripts/test-inmet-integrity.mjs',
+  'API trust tests',
+  'node scripts/test-api-trust.mjs',
+  'OSM tile policy tests',
+  'node scripts/test-osm-policy.mjs',
+  "bun-version: '1.3.14'",
   'bun install',
   'bun run verify:repo',
   'bun run type-check',
   'bun run lint',
   'bun run build',
 ])
-const swRuntimeStep = qualityWorkflow.indexOf('node scripts/test-sw-runtime.mjs')
 const installStep = qualityWorkflow.indexOf('bun install')
-if (swRuntimeStep < 0 || installStep < 0 || swRuntimeStep > installStep) {
-  failures.push('.github/workflows/quality.yml must run the zero-dependency Service Worker runtime gate before dependency installation')
+for (const command of [
+  'node scripts/test-sw-runtime.mjs',
+  'node scripts/test-inmet-integrity.mjs',
+  'node scripts/test-api-trust.mjs',
+  'node scripts/test-osm-policy.mjs',
+]) {
+  const step = qualityWorkflow.indexOf(command)
+  if (step < 0 || installStep < 0 || step > installStep) {
+    failures.push(`.github/workflows/quality.yml must run ${command} before dependency installation`)
+  }
 }
 
 const sw = await assertFileContains('public/sw.js', [
   "const CACHE_VERSION = 'aussy-v8'",
   "const OSM_TILES_CACHE = 'aussy-v2-osm-tiles'",
+  "const OSM_TILE_META_CACHE = 'aussy-osm-tile-meta-v1'",
+  'const OSM_MIN_TTL_MS = 7 * 24 * 60 * 60 * 1000',
   'k !== OSM_TILES_CACHE',
   '/_next/static/',
   'PRECACHE_SHELL',
@@ -84,6 +124,9 @@ const sw = await assertFileContains('public/sw.js', [
   'X-Aussy-Upstream-Degraded',
   "response.type === 'opaque'",
   'currentCachesReady',
+  'async function osmTileCache(request)',
+  "if (url.hostname === 'tile.openstreetmap.org')",
+  'event.respondWith(osmTileCache(request))',
 ])
 forbid('public/sw.js', sw, [
   "'User-Agent'",
@@ -92,6 +135,10 @@ forbid('public/sw.js', sw, [
   '/api/queimadas/focos?lat=-15.7801',
   '/api/cptec/forecast?lat=-15.7801',
   '/api/ana/rios?lat=-15.7801',
+  "url.hostname === 'a.tile.openstreetmap.org'",
+  "url.hostname === 'b.tile.openstreetmap.org'",
+  "url.hostname === 'c.tile.openstreetmap.org'",
+  'cacheFirst(request, OSM_TILES_CACHE)',
 ])
 try {
   new Function(sw)
@@ -113,8 +160,37 @@ const offlineManager = await assertFileContains('src/components/aussy/offline-ma
   "sendWorkerCommand('PRECACHE_EMERGENCY')",
   'MessageChannel',
   'App shell + JS/CSS em cache',
+  'Tiles OSM não são pré-baixados',
+  'apenas tiles efetivamente visualizados podem permanecer em cache',
 ])
-forbid('src/components/aussy/offline-manager.tsx', offlineManager, ['aussy-v2-emergency', 'aussy-v2-statics'])
+forbid('src/components/aussy/offline-manager.tsx', offlineManager, [
+  'aussy-v2-emergency',
+  'aussy-v2-statics',
+  'incluindo mapas baixados',
+])
+
+const offlineMap = await assertFileContains('src/components/aussy/offline-map.tsx', [
+  'Mapa OSM · cache de visualização',
+  '© OpenStreetMap contributors',
+  'https://www.openstreetmap.org/copyright',
+  'O Aussy não pré-baixa áreas nem pilhas de zoom',
+  'initialLat: number',
+  'initialLon: number',
+])
+forbid('src/components/aussy/offline-map.tsx', offlineMap, [
+  'handleDownloadOffline',
+  'Baixar offline',
+  'initialLat = -15.7801',
+  'initialLon = -47.9292',
+  'CC-BY-SA',
+  'Funciona 100% offline após download',
+])
+
+const nextConfig = await assertFileContains('next.config.ts', [
+  "'https://tile.openstreetmap.org'",
+  "{ key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' }",
+])
+forbid('next.config.ts', nextConfig, ['https://*.tile.openstreetmap.org'])
 
 const geolocation = await assertFileContains('src/hooks/use-geolocation.ts', [
   "const STORAGE_KEY = 'aussy_last_location_v1'",
@@ -328,4 +404,4 @@ if (failures.length) {
   process.exit(1)
 }
 
-console.log('Aussy repository invariants OK — online/offline resilience, runtime SW gate, emergency UI, shell location, orbital trust and data-safety checks passed')
+console.log('Aussy repository invariants OK — zero-dependency gates, online/offline resilience, OSM policy, emergency UI, shell location, orbital trust and data-safety checks passed')
