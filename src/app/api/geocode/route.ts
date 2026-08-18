@@ -117,8 +117,8 @@ export async function GET(req: NextRequest) {
         queriedAt: new Date().toISOString(),
         lat,
         lon,
-        city,
         ...result,
+        city,
         note: 'Resultado de geocodificação reversa. Coordenadas continuam sendo a referência primária; nomes de local podem variar conforme os dados do OpenStreetMap.',
       },
       {
