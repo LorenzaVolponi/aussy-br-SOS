@@ -147,6 +147,28 @@ forbid('src/app/api/emergency/contacts/route.ts', emergencyContacts, [
   'channel: 4370',
 ])
 
+const emergencyUi = await assertFileContains('src/components/aussy/emergency-sos.tsx', [
+  'atalho de discagem',
+  'a chamada telefônica ainda exige serviço de voz/rede disponível',
+  'SOS via satélite do aparelho',
+  'contacts.satelliteSos.apple.device',
+  'contacts.satelliteSos.android.device',
+  'contacts.smsBroadcast.description',
+  'SMS por CEP:',
+  'Checklist local de preparação',
+])
+forbid('src/components/aussy/emergency-sos.tsx', emergencyUi, [
+  'Android (Snapdragon Sat.)',
+  'Ativo em:',
+  'funciona offline',
+  'Recomendado pela Defesa Civil e ANATEL',
+])
+const emergencyLatUses = (emergencyUi.match(/observerLat/g) || []).length
+const emergencyLonUses = (emergencyUi.match(/observerLon/g) || []).length
+if (emergencyLatUses > 1 || emergencyLonUses > 1) {
+  failures.push('src/components/aussy/emergency-sos.tsx must not use location props operationally until a verified location-dependent SOS flow exists')
+}
+
 const cemaden = await assertFileContains('src/app/api/cemaden/alerts/route.ts', [
   'Nenhum alerta sintético foi gerado',
   "dataQuality: 'unavailable'",
@@ -270,4 +292,4 @@ if (failures.length) {
   process.exit(1)
 }
 
-console.log('Aussy repository invariants OK — online/offline resilience, shell location, orbital trust and data-safety checks passed')
+console.log('Aussy repository invariants OK — online/offline resilience, emergency UI, shell location, orbital trust and data-safety checks passed')
