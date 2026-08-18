@@ -1,0 +1,24 @@
+name: Release Readiness
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Runtime
+        run: node --version
+
+      - name: Release blockers
+        run: node scripts/release-readiness.mjs
+
+      - name: Zero-dependency safety suite
+        run: node scripts/run-safety-suite.mjs
