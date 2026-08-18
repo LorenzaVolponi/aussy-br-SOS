@@ -7,7 +7,7 @@ Este roteiro valida os fluxos críticos de operação online, perda de rede, col
 1. Abra o app online em HTTPS.
 2. Em **Modo Offline & Instalação**, toque em **Preparar tudo agora**.
 3. O checklist deve confirmar: Service Worker registrado/controlando, app shell + JS/CSS em cache e dados de emergência em cache.
-4. Na aba **Mapa**, baixe os tiles da região que você pretende usar sem rede.
+4. Na aba **Mapa**, navegue online apenas pelas áreas e níveis de zoom que você realmente precisa visualizar. Os tiles solicitados pela visualização podem ficar em cache. **Não existe pré-download de região no servidor padrão do OpenStreetMap.**
 
 ## Cenário A — online
 
@@ -17,6 +17,7 @@ Este roteiro valida os fluxos críticos de operação online, perda de rede, col
 - GPS real é preferido; IP é apenas fallback aproximado.
 - APIs externas atualizam seus caches quando respondem com sucesso.
 - SOS sonoro/vibração e links `tel:` continuam independentes das APIs.
+- O mapa solicita somente os tiles necessários ao viewport atual e mantém atribuição visível ao OpenStreetMap.
 
 ## Cenário B — perda de rede com app aberto
 
@@ -26,7 +27,7 @@ Este roteiro valida os fluxos críticos de operação online, perda de rede, col
 4. Números de emergência, guias locais, SOS sonoro/vibração e dados locais continuam acessíveis.
 5. A última posição válida permanece disponível com origem `cached` quando não houver nova leitura GPS/IP.
 6. APIs sem cópia local retornam estado offline/indisponível; dados cacheados não podem ser apresentados como leitura ao vivo.
-7. Tiles previamente baixados continuam navegáveis no mapa.
+7. Tiles OpenStreetMap previamente **visualizados** podem reaparecer do cache; uma área nunca visualizada não deve ser baixada automaticamente nem prometida como disponível offline.
 
 ## Cenário C — cold boot offline
 
@@ -36,6 +37,7 @@ Este roteiro valida os fluxos críticos de operação online, perda de rede, col
 4. A aplicação deve inicializar usando `/` + chunks `/_next/static/` do cache.
 5. Navegação local, SOS, guias e recursos já cacheados devem abrir sem conexão.
 6. Se o app shell nunca tiver sido preparado no dispositivo, a página mínima offline deve exibir 192, 190, 193 e 199 em vez de uma tela quebrada.
+7. No mapa, somente tiles já visualizados e ainda presentes no cache podem aparecer; ausência de tile deve gerar estado explícito, não prefetch em background.
 
 ## Cenário D — OFF → ON
 
@@ -43,25 +45,36 @@ Este roteiro valida os fluxos críticos de operação online, perda de rede, col
 2. O badge deve voltar para `ONLINE`.
 3. O evento `online` dispara atualização do app shell e pacote crítico.
 4. Leituras ao vivo voltam a substituir caches somente após resposta de rede válida.
-5. Atualizações do Service Worker preservam mapas OSM baixados e só eliminam caches antigos quando o novo shell + emergência estão prontos.
+5. Atualizações do Service Worker preservam tiles OSM já visualizados. Tiles dentro da janela mínima de cache não são requisitados novamente; após a janela, a visualização online pode revalidá-los. Offline continua podendo usar a cópia local existente.
 
 ## Cenário E — regressão técnica
 
-Executar antes de merge/deploy:
+Os gates zero-dependency podem ser executados sem instalar o projeto:
 
 ```bash
-npm install
-npm run verify:repo
-npm run type-check
-npm run lint
-npm run build
+node scripts/test-sw-runtime.mjs
+node scripts/test-inmet-integrity.mjs
+node scripts/test-api-trust.mjs
 ```
 
-`verify:repo` valida, entre outros pontos:
+Com registry/dependências disponíveis, executar também:
 
-- sintaxe do Service Worker;
+```bash
+bun install
+bun run verify:repo
+bun run type-check
+bun run lint
+bun run build
+```
+
+`verify:repo` e os gates validam, entre outros pontos:
+
+- sintaxe e comportamento do Service Worker;
 - SW v8 e app shell com chunks do Next;
-- preservação de tiles OSM;
+- preservação passiva dos tiles OSM visualizados;
+- ausência de prefetch/bulk download de `tile.openstreetmap.org`;
+- hostname canônico `tile.openstreetmap.org` e atribuição visível no mapa;
+- janela mínima de 7 dias antes de revalidar um tile armazenado quando os headers não podem ser lidos;
 - ausência de caches manuais legados `aussy-v2-emergency`/`aussy-v2-statics`;
 - ausência de `User-Agent` proibido no fetch do navegador;
 - geolocalização persistente e fallback same-origin;
@@ -71,3 +84,5 @@ npm run build
 ## Limites operacionais
 
 Offline não transforma fontes externas em dados ao vivo. Alertas meteorológicos, ambientais, orbitais e regulatórios dependem de conexão para atualização; sem rede, o app usa somente o que foi previamente cacheado e deve identificar essa condição. Chamadas telefônicas dependem de cobertura celular/serviço da operadora, embora o discador possa ser aberto sem internet.
+
+O servidor raster padrão do OpenStreetMap é usado somente para visualização interativa e cache dos tiles efetivamente solicitados pela navegação. Pacotes completos de mapas offline exigem um provedor que autorize prefetch/offline ou infraestrutura própria de tiles.
