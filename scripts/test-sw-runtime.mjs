@@ -244,11 +244,12 @@ await test('PRECACHE_LOCATION rejects invalid coordinates', async () => {
 await test('PRECACHE_LOCATION warms all location endpoints with real coordinates', async () => {
   const reply = await dispatchMessage({ type: 'PRECACHE_LOCATION', lat: -25.4284, lon: -49.2733 })
   assert.equal(reply.ok, true)
-  assert.equal(reply.total, 9)
-  assert.equal(reply.succeeded, 9)
+  assert.equal(reply.total, 8)
+  assert.equal(reply.succeeded, 8)
   const runtime = await caches.open('aussy-v8-runtime')
   assert.ok(await runtime.match('/api/cptec/forecast?lat=-25.42840&lon=-49.27330'))
   assert.ok(await runtime.match('/api/geocode?lat=-25.42840&lon=-49.27330'))
+  assert.equal(await runtime.match('/api/ibge/municipios?lat=-25.42840&lon=-49.27330&raio=100&limit=15'), undefined)
 })
 
 await test('CLEAR_CACHE explicitly clears all Aussy caches', async () => {

@@ -51,7 +51,6 @@ function locationPrecacheUrls(lat, lon) {
     `/api/cptec/forecast?lat=${qLat}&lon=${qLon}`,
     `/api/inmet/stations?lat=${qLat}&lon=${qLon}&raio=300`,
     `/api/ana/rios?lat=${qLat}&lon=${qLon}&raio=500`,
-    `/api/ibge/municipios?lat=${qLat}&lon=${qLon}&raio=100&limit=15`,
     `/api/geocode?lat=${qLat}&lon=${qLon}`,
   ];
 }
@@ -383,11 +382,6 @@ self.addEventListener('fetch', (event) => {
 
   if (url.hostname === 'tile.openstreetmap.org') {
     event.respondWith(osmTileCache(request));
-    return;
-  }
-
-  if (url.hostname.includes('cptec.inpe.br') || url.hostname.includes('satellite1.cptec')) {
-    event.respondWith(cacheFirst(request, RUNTIME_CACHE));
     return;
   }
 
