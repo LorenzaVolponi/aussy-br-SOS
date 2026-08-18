@@ -193,7 +193,7 @@ await test('offline emergency fallback retains national numbers', async () => {
   online = true
 })
 
-await test('OSM tile is cached online and reused offline', async () => {
+await test('OSM tile viewed online is reused offline', async () => {
   const tileUrl = 'https://tile.openstreetmap.org/4/5/6.png'
   customFetch.set(tileUrl, new Response('tile-456', { headers: { 'Content-Type': 'image/png' } }))
   let response = await dispatchFetch(tileUrl)
@@ -202,6 +202,37 @@ await test('OSM tile is cached online and reused offline', async () => {
   response = await dispatchFetch(tileUrl)
   assert.equal(await response.text(), 'tile-456')
   online = true
+})
+
+await test('OSM tile cache avoids refetch inside 7-day window and revalidates after it', async () => {
+  const tileUrl = 'https://tile.openstreetmap.org/7/8/9.png'
+  let networkCalls = 0
+  let version = 1
+  customFetch.set(tileUrl, () => {
+    networkCalls += 1
+    return new Response(`tile-v${version}`, { headers: { 'Content-Type': 'image/png' } })
+  })
+
+  let response = await dispatchFetch(tileUrl)
+  assert.equal(await response.text(), 'tile-v1')
+  assert.equal(networkCalls, 1)
+
+  version = 2
+  response = await dispatchFetch(tileUrl)
+  assert.equal(await response.text(), 'tile-v1')
+  assert.equal(networkCalls, 1)
+
+  const metaCache = await caches.open('aussy-osm-tile-meta-v1')
+  await metaCache.put(tileUrl, new Response(String(Date.now() - (8 * 24 * 60 * 60 * 1000))))
+
+  response = await dispatchFetch(tileUrl)
+  assert.equal(await response.text(), 'tile-v2')
+  assert.equal(networkCalls, 2)
+})
+
+await test('Service Worker only intercepts canonical OSM tile hostname', async () => {
+  const response = await dispatchFetch('https://a.tile.openstreetmap.org/4/5/6.png')
+  assert.equal(response, undefined)
 })
 
 await test('PRECACHE_LOCATION rejects invalid coordinates', async () => {
