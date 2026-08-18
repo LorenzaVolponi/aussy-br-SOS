@@ -30,6 +30,10 @@ requireFragments(stationsRoutePath, stationsRoute, [
   'Nenhuma cidade padrão é assumida',
   "dataQuality: 'unavailable'",
   "dataQuality: observationsLive ? 'live-observations' : 'live-catalog'",
+  "status === 'operante' || status === 'operativa'",
+  "normalized.toLowerCase() === 'null'",
+  'parsed === 9999',
+  'observationsLive = Object.keys(leituras).length > 0',
   'chuva_24h: null',
   'Vento e rajada em m/s',
   'Chuva em 24h não é inferida a partir de 1h',
@@ -38,6 +42,8 @@ forbidFragments(stationsRoutePath, stationsRoute, [
   'ESTACOES_FALLBACK',
   "url.searchParams.get('lat') || '-15.7801'",
   "url.searchParams.get('lon') || '-47.9292'",
+  "status.includes('operat')",
+  'observationsLive = true',
   'chuva_24h: l.chuva_1h',
   "fonte: online ? 'INMET (tempo real)'",
 ])
@@ -92,4 +98,4 @@ if (failures.length) {
   process.exit(1)
 }
 
-console.log('INMET integrity gate OK — location, provenance, cache semantics and units are protected')
+console.log('INMET integrity gate OK — live catalog states, null sentinels, provenance, cache semantics and units are protected')
