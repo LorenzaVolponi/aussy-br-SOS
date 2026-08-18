@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 export interface GeoPoint {
   lat: number
@@ -13,16 +13,64 @@ export interface GeoPoint {
   country?: string
 }
 
+const STORAGE_KEY = 'aussy_last_location_v1'
+
+function isValidCoordinate(lat: unknown, lon: unknown): boolean {
+  return typeof lat === 'number' &&
+    typeof lon === 'number' &&
+    Number.isFinite(lat) &&
+    Number.isFinite(lon) &&
+    lat >= -90 && lat <= 90 &&
+    lon >= -180 && lon <= 180
+}
+
+function readCachedPoint(): GeoPoint | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<GeoPoint>
+    if (!isValidCoordinate(parsed.lat, parsed.lon)) return null
+    return {
+      lat: parsed.lat as number,
+      lon: parsed.lon as number,
+      accuracy: parsed.accuracy,
+      source: 'cached',
+      timestamp: parsed.timestamp || new Date().toISOString(),
+      city: parsed.city,
+      region: parsed.region,
+      country: parsed.country,
+    }
+  } catch {
+    return null
+  }
+}
+
+function persistPoint(point: GeoPoint) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(point))
+  } catch {
+    // localStorage pode estar indisponível em modo privado/restrito.
+  }
+}
+
 export function useGeolocation() {
   const [point, setPoint] = useState<GeoPoint | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  const fromGps = (): Promise<GeoPoint> => new Promise((resolve, reject) => {
-    if (!('geolocation' in navigator)) {
+  useEffect(() => {
+    const cached = readCachedPoint()
+    if (cached) setPoint((current) => current ?? cached)
+  }, [])
+
+  const fromGps = useCallback((): Promise<GeoPoint> => new Promise((resolve, reject) => {
+    if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
       reject(new Error('Geolocalização não suportada'))
       return
     }
+
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         resolve({
@@ -33,59 +81,106 @@ export function useGeolocation() {
           timestamp: new Date(pos.timestamp).toISOString(),
         })
       },
-      (err) => reject(new Error(err.message)),
+      (err) => reject(new Error(err.message || 'GPS indisponível')),
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
     )
-  })
+  }), [])
 
-  const fromIp = async (): Promise<GeoPoint> => {
+  const fromIp = useCallback(async (): Promise<GeoPoint> => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      throw new Error('Sem rede para localização por IP')
+    }
+
     const res = await fetch('/api/network/status', { cache: 'no-store' })
+    if (!res.ok) throw new Error('Status de rede indisponível')
     const data = await res.json()
-    if (!data.externalIp) throw new Error('IP não disponível')
-    // Consulta ipapi já é feita no endpoint, mas precisamos do lat/lon
-    const geoRes = await fetch('https://ipapi.co/json/', { cache: 'no-store' })
-    const geo = await geoRes.json()
+    const geo = data?.geo
+
+    if (!geo || !isValidCoordinate(geo.latitude, geo.longitude)) {
+      throw new Error('Localização aproximada por IP indisponível')
+    }
+
     return {
       lat: geo.latitude,
       lon: geo.longitude,
-      accuracy: 5000, // ~5km de precisão típica para IP
+      accuracy: 5000,
       source: 'ip',
       timestamp: new Date().toISOString(),
-      city: geo.city,
-      region: geo.region,
-      country: geo.country_name,
+      city: geo.city || undefined,
+      region: geo.region || undefined,
+      country: geo.country || undefined,
     }
-  }
+  }, [])
 
-  const detect = async (preferGps = true) => {
+  const detect = useCallback(async (preferGps = true) => {
     setLoading(true)
     setError(null)
+
     try {
-      let p: GeoPoint | null = null
+      let nextPoint: GeoPoint | null = null
+      let gpsError: Error | null = null
+
       if (preferGps) {
         try {
-          p = await fromGps()
-        } catch (e) {
-          // fallback para IP
+          nextPoint = await fromGps()
+        } catch (err) {
+          gpsError = err instanceof Error ? err : new Error('GPS indisponível')
         }
       }
-      if (!p) p = await fromIp()
-      setPoint(p)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Falha ao detectar localização')
+
+      if (!nextPoint && typeof navigator !== 'undefined' && navigator.onLine) {
+        try {
+          nextPoint = await fromIp()
+        } catch {
+          // A última posição conhecida ainda é preferível a um default arbitrário.
+        }
+      }
+
+      if (!nextPoint) {
+        const cached = readCachedPoint()
+        if (cached) {
+          setPoint(cached)
+          setError(gpsError?.message || 'Usando última localização conhecida')
+          return cached
+        }
+      }
+
+      if (!nextPoint && !preferGps) {
+        nextPoint = await fromGps()
+      }
+
+      if (!nextPoint) {
+        throw gpsError || new Error('Não foi possível determinar a localização')
+      }
+
+      persistPoint(nextPoint)
+      setPoint(nextPoint)
+      return nextPoint
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Falha ao detectar localização'
+      setError(message)
+      return null
     } finally {
       setLoading(false)
     }
-  }
+  }, [fromGps, fromIp])
 
-  const setManual = (lat: number, lon: number) => {
-    setPoint({
+  const setManual = useCallback((lat: number, lon: number) => {
+    if (!isValidCoordinate(lat, lon)) {
+      setError('Coordenadas inválidas')
+      return
+    }
+
+    const manualPoint: GeoPoint = {
       lat,
       lon,
       source: 'manual',
       timestamp: new Date().toISOString(),
-    })
-  }
+    }
+    persistPoint(manualPoint)
+    setPoint(manualPoint)
+    setError(null)
+  }, [])
 
   return { point, error, loading, detect, setManual }
 }

@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 /**
- * API: USGS Earthquakes — terremotos globais em tempo real
- * Fonte: earthquake.usgs.gov (serviço público, sem chave de API)
- * Filtros: lat/lon/raio (km), magnitude mínima, período (dias)
+ * USGS Earthquakes — eventos globais confirmados.
+ *
+ * Sem resposta do USGS, NÃO convertemos sismos históricos em eventos atuais.
+ * A última resposta real pode ser servida pelo Service Worker; sem cache,
+ * retornamos `events: []` + indisponibilidade explícita.
  */
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-export const revalidate = 300 // 5 minutos
+export const revalidate = 300
 
 interface QuakeEvent {
   id: string
@@ -25,19 +27,16 @@ function haversine(lat1: number, lon1: number, lat2: number, lon2: number): numb
   const R = 6371
   const dLat = ((lat2 - lat1) * Math.PI) / 180
   const dLon = ((lon2 - lon1) * Math.PI) / 180
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) ** 2
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2
   return 2 * R * Math.asin(Math.sqrt(a))
 }
 
-function severityFromMag(m: number): QuakeEvent['severity'] {
-  if (m >= 8) return 'great'
-  if (m >= 7) return 'major'
-  if (m >= 6) return 'forte'
-  if (m >= 4.5) return 'moderado'
+function severityFromMag(magnitude: number): QuakeEvent['severity'] {
+  if (magnitude >= 8) return 'great'
+  if (magnitude >= 7) return 'major'
+  if (magnitude >= 6) return 'forte'
+  if (magnitude >= 4.5) return 'moderado'
   return 'baixo'
 }
 
@@ -45,117 +44,80 @@ export async function GET(req: NextRequest) {
   const searchParams = req.nextUrl.searchParams
   const lat = parseFloat(searchParams.get('lat') || '-15.7801')
   const lon = parseFloat(searchParams.get('lon') || '-47.9292')
-  const radius = parseFloat(searchParams.get('raio') || '500')
-  const minMag = parseFloat(searchParams.get('mag') || '2.5')
-  const days = parseInt(searchParams.get('dias') || '7', 10)
+  const radius = Math.min(Math.max(parseFloat(searchParams.get('raio') || '500'), 1), 20000)
+  const minMag = Math.min(Math.max(parseFloat(searchParams.get('mag') || '2.5'), 0), 10)
+  const days = Math.min(Math.max(parseInt(searchParams.get('dias') || '7', 10), 1), 30)
 
   const startTime = new Date(Date.now() - days * 86400000).toISOString()
-  const url = `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=${startTime}&minmagnitude=${minMag}&orderby=time&limit=200`
+  const sourceUrl = `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=${encodeURIComponent(startTime)}&minmagnitude=${minMag}&orderby=time&limit=200`
 
   try {
-    const ctrl = new AbortController()
-    const t = setTimeout(() => ctrl.abort(), 7000)
-    const res = await fetch(url, {
-      signal: ctrl.signal,
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 7000)
+    const response = await fetch(sourceUrl, {
+      signal: controller.signal,
       headers: { 'User-Agent': 'AussyOntech/1.0 (emergency PWA)' },
       cache: 'no-store',
     })
-    clearTimeout(t)
+    clearTimeout(timeout)
 
-    if (!res.ok) throw new Error(`USGS HTTP ${res.status}`)
+    if (!response.ok) throw new Error(`USGS HTTP ${response.status}`)
 
-    const data = await res.json()
-    const features: any[] = data.features || []
+    const data = await response.json()
+    const features: any[] = Array.isArray(data?.features) ? data.features : []
 
     const events: QuakeEvent[] = features
-      .map((f: any) => {
-        const [lonEq, latEq, depth] = f.geometry.coordinates
-        const dist = haversine(lat, lon, latEq, lonEq)
+      .map((feature: any) => {
+        const coordinates = feature?.geometry?.coordinates
+        if (!Array.isArray(coordinates) || coordinates.length < 2) return null
+        const [eventLon, eventLat, depth] = coordinates
+        if (!Number.isFinite(eventLat) || !Number.isFinite(eventLon)) return null
+        const distance = haversine(lat, lon, eventLat, eventLon)
+        const magnitude = Number(feature?.properties?.mag ?? 0)
         return {
-          id: f.id,
-          magnitude: f.properties.mag ?? 0,
-          place: f.properties.place || '—',
-          time: f.properties.time,
-          url: f.properties.url,
-          coords: { lat: latEq, lon: lonEq, depth: depth || 0 },
-          distanceKm: Math.round(dist),
-          severity: severityFromMag(f.properties.mag ?? 0),
-          tsunami: !!f.properties.tsunami,
-        }
+          id: String(feature.id),
+          magnitude,
+          place: String(feature?.properties?.place || 'Local não informado'),
+          time: Number(feature?.properties?.time || 0),
+          url: String(feature?.properties?.url || 'https://earthquake.usgs.gov'),
+          coords: { lat: eventLat, lon: eventLon, depth: Number(depth || 0) },
+          distanceKm: Math.round(distance),
+          severity: severityFromMag(magnitude),
+          tsunami: Boolean(feature?.properties?.tsunami),
+        } satisfies QuakeEvent
       })
-      .filter((e) => e.distanceKm <= radius)
-      .sort((a, b) => (a.distanceKm ?? 0) - (b.distanceKm ?? 0))
+      .filter((event): event is QuakeEvent => Boolean(event && (event.distanceKm ?? Infinity) <= radius))
+      .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity))
 
-    return NextResponse.json(
-      {
-        source: 'USGS Earthquake Hazards Program',
-        sourceUrl: 'https://earthquake.usgs.gov',
-        queriedAt: new Date().toISOString(),
-        center: { lat, lon, radiusKm: radius },
-        minMagnitude: minMag,
-        periodDays: days,
-        total: events.length,
-        events: events.slice(0, 50),
-        offline: false,
-      },
-      {
-        headers: {
-          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
-        },
-      }
-    )
-  } catch (err: any) {
-    const now = Date.now()
-    const fallback: QuakeEvent[] = [
-      {
-        id: 'fallback-1',
-        magnitude: 4.1,
-        place: 'São Marcos, RS, Brasil (2022)',
-        time: now - 5 * 86400000,
-        url: 'https://earthquake.usgs.gov',
-        coords: { lat: -28.97, lon: -51.07, depth: 8 },
-        distanceKm: Math.round(haversine(lat, lon, -28.97, -51.07)),
-        severity: 'moderado',
-        tsunami: false,
-      },
-      {
-        id: 'fallback-2',
-        magnitude: 3.5,
-        place: 'Caldas Novas, GO, Brasil',
-        time: now - 12 * 86400000,
-        url: 'https://earthquake.usgs.gov',
-        coords: { lat: -17.74, lon: -48.62, depth: 5 },
-        distanceKm: Math.round(haversine(lat, lon, -17.74, -48.62)),
-        severity: 'baixo',
-        tsunami: false,
-      },
-      {
-        id: 'fallback-3',
-        magnitude: 4.8,
-        place: 'Porto dos Gaúchos, MT (2008 histórico)',
-        time: now - 30 * 86400000,
-        url: 'https://earthquake.usgs.gov',
-        coords: { lat: -11.4, lon: -57.07, depth: 10 },
-        distanceKm: Math.round(haversine(lat, lon, -11.4, -57.07)),
-        severity: 'moderado',
-        tsunami: false,
-      },
-    ]
-
-    return NextResponse.json(
-      {
-        source: 'fallback (offline ou API indisponível)',
-        sourceUrl: 'https://earthquake.usgs.gov',
-        queriedAt: new Date().toISOString(),
-        center: { lat, lon, radiusKm: radius },
-        minMagnitude: minMag,
-        periodDays: days,
-        total: fallback.length,
-        events: fallback.filter((e) => (e.distanceKm ?? 0) <= radius),
-        offline: true,
-        note: 'USGS indisponível; exibindo sismos históricos brasileiros para referência.',
-      },
-      { status: 200 }
-    )
+    return NextResponse.json({
+      source: 'USGS Earthquake Hazards Program',
+      sourceUrl: 'https://earthquake.usgs.gov',
+      queriedAt: new Date().toISOString(),
+      center: { lat, lon, radiusKm: radius },
+      minMagnitude: minMag,
+      periodDays: days,
+      total: events.length,
+      events: events.slice(0, 50),
+      offline: false,
+      error: null,
+      dataQuality: 'live',
+    }, {
+      headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' },
+    })
+  } catch {
+    return NextResponse.json({
+      source: 'USGS Earthquake Hazards Program — indisponível',
+      sourceUrl: 'https://earthquake.usgs.gov',
+      queriedAt: new Date().toISOString(),
+      center: { lat, lon, radiusKm: radius },
+      minMagnitude: minMag,
+      periodDays: days,
+      total: 0,
+      events: [],
+      offline: false,
+      error: 'unavailable',
+      dataQuality: 'unavailable',
+      note: 'Não foi possível confirmar eventos no USGS. Nenhum sismo histórico foi apresentado como evento atual.',
+    }, { status: 503 })
   }
 }

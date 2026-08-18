@@ -1,7 +1,7 @@
 {
   "name": "Aussy Ontech — Operadora de Resiliência Orbital",
   "short_name": "Aussy Ontech",
-  "description": "Operadora virtual de emergência e internet básica que combina satélites D2C (Starlink, AST SpaceMobile, Lynk, Iridium), infraestrutura ANATEL, alertas INMET/CEMADEN/INPE/CPTEC, rios ANA, municípios IBGE, Defesa Civil SEDEC, sismos USGS, eventos NASA EONET e WiFi público brasileiro. Funciona offline.",
+  "description": "Plataforma offline-first de resiliência: SOS, guias locais, mapas OpenStreetMap preparados para offline, última posição conhecida, alertas e dados ambientais/orbitais com cache e transparência de origem.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -72,56 +72,46 @@
       "name": "SOS de Emergência",
       "short_name": "SOS",
       "url": "/?tab=emergency",
-      "description": "Ativa modo de emergência imediatamente (192, 190, 193)",
+      "description": "Acesso rápido a SOS, números nacionais e guias locais de emergência",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     },
     {
-      "name": "Satélites visíveis",
+      "name": "Satélites",
       "short_name": "Satélites",
       "url": "/?tab=satellites",
-      "description": "Ver satélites D2C passando agora sobre o Brasil (Starlink, GOES-16)",
+      "description": "Dados orbitais disponíveis online ou da última cópia em cache",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Previsão do tempo",
       "short_name": "Clima",
       "url": "/?tab=clima",
-      "description": "Previsão CPTEC/INPE + estações INMET em tempo real + imagens GOES-16",
+      "description": "Previsão, estações e alertas quando online ou disponíveis em cache",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Mapa offline",
       "short_name": "Mapa",
       "url": "/?tab=mapa",
-      "description": "Mapa OpenStreetMap com cache offline + torres ANATEL",
+      "description": "Mapa OpenStreetMap com download de tiles e cobertura demonstrativa claramente identificada",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Defesa Civil",
       "short_name": "Defesa",
       "url": "/?tab=defesa",
-      "description": "Alertas SEDEC + contatos das Coordenadorias Estaduais (CEDEC) · 199",
+      "description": "Alertas e contatos disponíveis online ou da última cópia local",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Natureza e rios",
       "short_name": "Natureza",
       "url": "/?tab=natureza",
-      "description": "CEMADEN, níveis de rios (ANA), fauna brasileira e eventos NASA EONET",
+      "description": "CEMADEN, rios, fauna e eventos naturais com indicação de disponibilidade dos dados",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     }
   ],
   "file_handlers": [],
-  "protocol_handlers": [
-    {
-      "protocol": "mailto",
-      "url": "/?mailto=%s"
-    },
-    {
-      "protocol": "tel",
-      "url": "/?tel=%s"
-    }
-  ],
   "launch_handler": {
     "client_mode": "navigate-existing"
   },

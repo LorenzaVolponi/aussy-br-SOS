@@ -1,21 +1,22 @@
 import { NextResponse } from 'next/server'
 
 /**
- * API que busca focos de queimada ativos próximos a uma coordenada.
- * Fonte: INPE / Programa Queimadas — https://queimadas.dgi.inpe.br/
- * Endpoint público: https://queimadas.dgi.inpe.br/api/focos/
+ * Focos de fogo ativo — Programa Queimadas / INPE.
  *
- * O INPE monitora focos de fogo via satélites de referência (AQUA, TERRA, GOES, NOAA, NPP-Suomi).
- * Atualização: a cada 3 horas para América do Sul.
- * Resolução: detecta queimadas a partir de ~1 km² de área ativa.
+ * Fonte oficial de dados abertos:
+ * https://dataserver-coids.inpe.br/queimadas/queimadas/focos/csv/10min/
  *
- * Estratégia offline-first:
- * - Busca focos próximos ao usuário (raio padrão: 100km)
- * - Fallback com dados de referência por bioma se offline
+ * O diretório publica arquivos CSV em janelas de 10 minutos. A rota descobre
+ * os arquivos mais recentes, agrega uma janela curta e filtra por distância.
+ * Se a fonte estiver indisponível, NÃO cria focos sintéticos; o Service Worker
+ * pode servir a última resposta real em cache.
  */
 
 export const dynamic = 'force-dynamic'
-export const revalidate = 10800 // 3 horas (frequência do INPE)
+export const revalidate = 600
+
+const INDEX_URL = 'https://dataserver-coids.inpe.br/queimadas/queimadas/focos/csv/10min/'
+const SOURCE_URL = 'https://terrabrasilis.dpi.inpe.br/queimadas/portal/pages/secao_downloads/dados-abertos/index.html'
 
 export interface FocoQueimada {
   id: string
@@ -30,156 +31,181 @@ export interface FocoQueimada {
   risco: 'Baixo' | 'Médio' | 'Alto' | 'Crítico'
 }
 
-export async function GET(request: Request) {
-  const url = new URL(request.url)
-  const lat = parseFloat(url.searchParams.get('lat') || '-15.7801')
-  const lon = parseFloat(url.searchParams.get('lon') || '-47.9292')
-  const raio = parseInt(url.searchParams.get('raio') || '200') // km
-
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 6000)
-
-  try {
-    // INPE Queimadas — endpoint público de focos por coordenada
-    // Documentação: https://queimadas.dgi.inpe.br/api/
-    const endpoint = `https://queimadas.dgi.inpe.br/api/focos?lat=${lat}&lon=${lon}&raio=${raio}&limit=50`
-
-    let rawFocos: any[] = []
-    let sourceLabel = 'INPE Queimadas (queimadas.dgi.inpe.br)'
-
-    try {
-      const res = await fetch(endpoint, {
-        signal: controller.signal,
-        headers: { 'Accept': 'application/json', 'User-Agent': 'AussyOntech/1.0' },
-        cache: 'no-store',
-      })
-      clearTimeout(timeout)
-      if (res.ok) {
-        const data = await res.json()
-        rawFocos = Array.isArray(data) ? data : (data.focos || [])
-      } else {
-        throw new Error(`INPE retornou ${res.status}`)
-      }
-    } catch {
-      // Fallback: dados de referência por bioma brasileiro
-      rawFocos = generateSimulatedFocos(lat, lon)
-      sourceLabel = 'INPE Queimadas (dados de referência offline por bioma)'
-    }
-
-    const focos: FocoQueimada[] = (rawFocos || []).map((f): FocoQueimada => {
-      const fLat = Number(f.latitude || f.lat)
-      const fLon = Number(f.longitude || f.lon)
-      const dist = Number(f.distancia || (isFinite(fLat) && isFinite(fLon) ? haversine(lat, lon, fLat, fLon) : 9999))
-      return {
-        id: String(f.id || f.foco_id || `${fLat}-${fLon}-${f.data_hora || Date.now()}`),
-        lat: fLat,
-        lon: fLon,
-        municipio: f.municipio || f.nomeMunicipio || '',
-        uf: (f.uf || f.estado || '').toUpperCase(),
-        bioma: f.bioma || guessBioma(fLat, fLon),
-        satellite: f.satelite || f.satellite || 'AQUA',
-        dataHora: f.data_hora || f.dataHora || f.data || new Date().toISOString(),
-        distanciaKm: Math.round(dist),
-        risco: mapRisco(dist, f.numero_detecoes || f.frp || 0),
-      }
-    }).filter(f => isFinite(f.lat) && isFinite(f.lon))
-
-    // Ordena por distância
-    focos.sort((a, b) => (a.distanciaKm || 9999) - (b.distanciaKm || 9999))
-
-    return NextResponse.json({
-      focos,
-      total: focos.length,
-      raio,
-      referencia: { lat, lon },
-      cached: false,
-      fetchedAt: new Date().toISOString(),
-      source: sourceLabel,
-    })
-  } catch (e: any) {
-    clearTimeout(timeout)
-    return NextResponse.json(
-      {
-        focos: [],
-        total: 0,
-        error: 'offline',
-        message: 'Não foi possível buscar focos de queimada. Verifique sua conexão.',
-        fetchedAt: new Date().toISOString(),
-      },
-      { status: 200 }
-    )
-  }
-}
-
 function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371 // km
+  const R = 6371
   const dLat = ((lat2 - lat1) * Math.PI) / 180
   const dLon = ((lon2 - lon1) * Math.PI) / 180
-  const a =
-    Math.sin(dLat / 2) ** 2 +
+  const a = Math.sin(dLat / 2) ** 2 +
     Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
-function mapRisco(dist: number, intensidade: number): 'Baixo' | 'Médio' | 'Alto' | 'Crítico' {
-  if (dist < 25 && intensidade > 30) return 'Crítico'
-  if (dist < 50) return 'Alto'
-  if (dist < 100) return 'Médio'
+function parseCsvLine(line: string): string[] {
+  const cells: string[] = []
+  let current = ''
+  let quoted = false
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i]
+    if (char === '"') {
+      if (quoted && line[i + 1] === '"') {
+        current += '"'
+        i += 1
+      } else {
+        quoted = !quoted
+      }
+    } else if (char === ',' && !quoted) {
+      cells.push(current.trim())
+      current = ''
+    } else {
+      current += char
+    }
+  }
+  cells.push(current.trim())
+  return cells
+}
+
+function normalizeKey(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '')
+}
+
+function parseCsv(csv: string): Record<string, string>[] {
+  const lines = csv.replace(/^\uFEFF/, '').split(/\r?\n/).filter(Boolean)
+  if (lines.length < 2) return []
+  const headers = parseCsvLine(lines[0]).map(normalizeKey)
+  return lines.slice(1).map((line) => {
+    const values = parseCsvLine(line)
+    return Object.fromEntries(headers.map((header, index) => [header, values[index] ?? '']))
+  })
+}
+
+function first(row: Record<string, string>, keys: string[]): string {
+  for (const key of keys) {
+    if (row[key] != null && row[key] !== '') return row[key]
+  }
+  return ''
+}
+
+function proximityRisk(distanceKm: number): FocoQueimada['risco'] {
+  if (distanceKm <= 10) return 'Crítico'
+  if (distanceKm <= 25) return 'Alto'
+  if (distanceKm <= 75) return 'Médio'
   return 'Baixo'
 }
 
-// Heurística simples para bioma brasileiro por lat/lon
-// Fonte: IBGE — Mapa de Biomas do Brasil
-function guessBioma(lat: number, lon: number): string {
-  // Amazônia: lat -5 a +5, lon -75 a -45
-  if (lat >= -10 && lat <= 4 && lon >= -75 && lon <= -45) return 'Amazônia'
-  // Cerrado: lat -25 a -2, lon -60 a -40
-  if (lat >= -25 && lat <= -2 && lon >= -60 && lon <= -40) return 'Cerrado'
-  // Caatinga: lat -18 a -2, lon -45 a -34
-  if (lat >= -18 && lat <= -2 && lon >= -45 && lon <= -34) return 'Caatinga'
-  // Mata Atlântica: faixa litorânea
-  if (lon >= -45 && lon <= -34 && lat >= -34 && lat <= -5) return 'Mata Atlântica'
-  // Pampa: RS
-  if (lat >= -34 && lat <= -27 && lon >= -58 && lon <= -50) return 'Pampa'
-  // Pantanal: MT/MS
-  if (lat >= -22 && lat <= -15 && lon >= -60 && lon <= -53) return 'Pantanal'
-  return 'Indefinido'
-}
+export async function GET(request: Request) {
+  const url = new URL(request.url)
+  const lat = parseFloat(url.searchParams.get('lat') || '-15.7801')
+  const lon = parseFloat(url.searchParams.get('lon') || '-47.9292')
+  const raio = Math.min(Math.max(parseInt(url.searchParams.get('raio') || '200', 10), 1), 1000)
 
-// Gera focos de referência baseados na sazonalidade brasileira
-// Período crítico de queimadas: julho a outubro (seca)
-function generateSimulatedFocos(userLat: number, userLon: number): any[] {
-  const month = new Date().getMonth() + 1
-  // Época crítica: Amazônia/Cerrado jun-out, Pantanal jul-out
-  const critico = month >= 6 && month <= 10
+  try {
+    const indexController = new AbortController()
+    const indexTimeout = setTimeout(() => indexController.abort(), 6000)
+    const indexResponse = await fetch(INDEX_URL, {
+      signal: indexController.signal,
+      cache: 'no-store',
+      headers: { Accept: 'text/html' },
+    })
+    clearTimeout(indexTimeout)
 
-  if (!critico) return [] // Fora da época, sem focos de referência
+    if (!indexResponse.ok) throw new Error(`INPE index HTTP ${indexResponse.status}`)
+    const indexHtml = await indexResponse.text()
+    const filenames = [...indexHtml.matchAll(/href=["']?(focos_10min_\d{8}_\d{4}\.csv)["']?/g)]
+      .map((match) => match[1])
+      .filter((value, index, all) => all.indexOf(value) === index)
+      .sort()
+      .slice(-12)
 
-  // Hotspots conhecidos por bioma (lat, lon, municipio, uf, bioma)
-  const hotspots = [
-    { lat: -10.5, lon: -55.5, municipio: 'Alta Floresta', uf: 'MT', bioma: 'Amazônia' },
-    { lat: -12.6, lon: -55.5, municipio: 'Sorriso', uf: 'MT', bioma: 'Amazônia/Cerrado' },
-    { lat: -15.6, lon: -56.1, municipio: 'Cuiabá', uf: 'MT', bioma: 'Cerrado' },
-    { lat: -16.3, lon: -50.4, municipio: 'Goiânia', uf: 'GO', bioma: 'Cerrado' },
-    { lat: -8.0, lon: -50.0, municipio: 'Marabá', uf: 'PA', bioma: 'Amazônia' },
-    { lat: -19.5, lon: -57.7, municipio: 'Corumbá', uf: 'MS', bioma: 'Pantanal' },
-    { lat: -20.5, lon: -54.6, municipio: 'Campo Grande', uf: 'MS', bioma: 'Cerrado' },
-    { lat: -9.4, lon: -40.5, municipio: 'Petrolina', uf: 'PE', bioma: 'Caatinga' },
-    { lat: -10.9, lon: -42.9, municipio: 'Barreiras', uf: 'BA', bioma: 'Cerrado' },
-    { lat: -5.0, lon: -45.5, municipio: 'Imperatriz', uf: 'MA', bioma: 'Amazônia/Cerrado' },
-    { lat: -11.5, lon: -45.5, municipio: 'Balsas', uf: 'MA', bioma: 'Cerrado' },
-  ]
+    if (!filenames.length) throw new Error('INPE: nenhum CSV recente encontrado')
 
-  return hotspots
-    .map(h => ({
-      ...h,
-      id: `ref-${h.municipio}`,
-      satellite: 'AQUA',
-      data_hora: new Date().toISOString(),
-      distancia: haversine(userLat, userLon, h.lat, h.lon),
-      numero_detecoes: Math.floor(Math.random() * 5) + 1,
+    const csvResults = await Promise.allSettled(filenames.map(async (filename) => {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 5000)
+      try {
+        const response = await fetch(`${INDEX_URL}${filename}`, {
+          signal: controller.signal,
+          cache: 'no-store',
+          headers: { Accept: 'text/csv,text/plain;q=0.9,*/*;q=0.1' },
+        })
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        return { filename, csv: await response.text() }
+      } finally {
+        clearTimeout(timeout)
+      }
     }))
-    .filter(h => h.distancia <= 600)
-    .sort((a, b) => a.distancia - b.distancia)
-    .slice(0, 10)
+
+    const seen = new Set<string>()
+    const focos: FocoQueimada[] = []
+
+    for (const result of csvResults) {
+      if (result.status !== 'fulfilled') continue
+      for (const row of parseCsv(result.value.csv)) {
+        const fLat = Number(first(row, ['latitude', 'lat']))
+        const fLon = Number(first(row, ['longitude', 'lon', 'lng']))
+        if (!Number.isFinite(fLat) || !Number.isFinite(fLon)) continue
+
+        const distance = haversine(lat, lon, fLat, fLon)
+        if (distance > raio) continue
+
+        const timestamp = first(row, ['data_hora_gmt', 'data_hora', 'datahora', 'data']) || result.value.filename
+        const satellite = first(row, ['satelite', 'satellite']) || 'não informado'
+        const id = `${fLat.toFixed(5)}:${fLon.toFixed(5)}:${timestamp}:${satellite}`
+        if (seen.has(id)) continue
+        seen.add(id)
+
+        focos.push({
+          id,
+          lat: fLat,
+          lon: fLon,
+          municipio: first(row, ['municipio', 'municipality']),
+          uf: first(row, ['estado', 'uf']).toUpperCase(),
+          bioma: first(row, ['bioma', 'biome']) || 'não informado',
+          satellite,
+          dataHora: timestamp,
+          distanciaKm: Math.round(distance),
+          risco: proximityRisk(distance),
+        })
+      }
+    }
+
+    focos.sort((a, b) => (a.distanciaKm ?? Infinity) - (b.distanciaKm ?? Infinity))
+
+    return NextResponse.json({
+      focos: focos.slice(0, 100),
+      total: focos.length,
+      raio,
+      referencia: { lat, lon },
+      cached: false,
+      offline: false,
+      error: null,
+      dataQuality: 'live-open-data',
+      riskBasis: 'proximidade ao foco; não substitui avaliação oficial de risco de incêndio',
+      fetchedAt: new Date().toISOString(),
+      source: 'Programa Queimadas / INPE — CSV oficial de 10 minutos',
+      sourceUrl: SOURCE_URL,
+      filesUsed: csvResults.filter((result) => result.status === 'fulfilled').length,
+    })
+  } catch (error) {
+    return NextResponse.json({
+      focos: [],
+      total: 0,
+      raio,
+      referencia: { lat, lon },
+      cached: false,
+      offline: false,
+      error: 'unavailable',
+      dataQuality: 'unavailable',
+      message: 'Não foi possível confirmar focos recentes no servidor oficial do INPE. Nenhum foco sintético foi gerado.',
+      fetchedAt: new Date().toISOString(),
+      source: 'Programa Queimadas / INPE — indisponível',
+      sourceUrl: SOURCE_URL,
+    }, { status: 503 })
+  }
 }

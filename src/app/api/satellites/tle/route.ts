@@ -1,9 +1,6 @@
-// Serviço para buscar TLEs (Two-Line Elements) reais do Celestrak
-// TLEs são dados orbitais públicos que permitem prever onde está cada satélite
-// Source: https://celestrak.org/NORAD/elements/
+// CelesTrak GP/TLE — dados orbitais reais. Sem fonte: cache real ou indisponível.
 
 import { NextResponse } from 'next/server'
-import { HARDCODED_TLES } from '@/lib/data/tle-cache'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -16,116 +13,110 @@ interface TleSatellite {
 }
 
 const CELESTRAK_GROUPS: Record<string, string> = {
-  starlink: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=starlink&FORMAT=tle',
-  iridium: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=iridium-NEXT&FORMAT=tle',
-  globalstar: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=globalstar&FORMAT=tle',
-  oneweb: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=oneweb&FORMAT=tle',
-  swarm: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=swarm&FORMAT=tle',
-  geo: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=geo&FORMAT=tle',
+  starlink: 'starlink',
+  iridium: 'iridium-NEXT',
+  globalstar: 'globalstar',
+  oneweb: 'oneweb',
+  swarm: 'swarm',
+  geo: 'geo',
+  weather: 'weather',
+  gnss: 'gps-ops',
 }
 
-// Contagem total real (aproximação para exibir)
-const CONSTELLATION_COUNTS: Record<string, number> = {
-  starlink: 6500,
-  iridium: 66,
-  globalstar: 48,
-  oneweb: 648,
-  swarm: 190,
-  geo: 500,
+function groupUrl(group: string) {
+  const celestrakGroup = CELESTRAK_GROUPS[group]
+  return celestrakGroup
+    ? `https://celestrak.org/NORAD/elements/gp.php?GROUP=${encodeURIComponent(celestrakGroup)}&FORMAT=TLE`
+    : null
 }
 
 function parseTle(text: string): TleSatellite[] {
-  const lines = text.trim().split('\n')
+  const lines = text.trim().split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
   const sats: TleSatellite[] = []
   for (let i = 0; i + 2 < lines.length; i += 3) {
-    const name = lines[i].trim()
-    const line1 = lines[i + 1].trim()
-    const line2 = lines[i + 2].trim()
-    if (line1.startsWith('1 ') && line2.startsWith('2 ')) {
-      sats.push({ name, line1, line2 })
-    }
+    const name = lines[i]
+    const line1 = lines[i + 1]
+    const line2 = lines[i + 2]
+    if (line1.startsWith('1 ') && line2.startsWith('2 ')) sats.push({ name, line1, line2 })
   }
   return sats
 }
 
-function calculateSubpoint(line1: string, line2: string, date: Date) {
+function tleEpoch(line1: string): Date | null {
+  const shortYear = Number.parseInt(line1.substring(18, 20), 10)
+  const epochDay = Number.parseFloat(line1.substring(20, 32))
+  if (!Number.isFinite(shortYear) || !Number.isFinite(epochDay)) return null
+  const year = shortYear >= 57 ? 1900 + shortYear : 2000 + shortYear
+  const wholeDay = Math.floor(epochDay)
+  const fraction = epochDay - wholeDay
+  const epoch = new Date(Date.UTC(year, 0, 1))
+  epoch.setUTCDate(wholeDay)
+  epoch.setUTCMilliseconds(Math.round(fraction * 86400000))
+  return epoch
+}
+
+/**
+ * Aproximação orbital leve para visualização. Não é propagação SGP4 e não
+ * deve ser usada para apontamento de antena, segurança de voo ou navegação.
+ */
+function calculateApproxSubpoint(line1: string, line2: string, date: Date) {
   const inclination = parseFloat(line2.substring(8, 16)) * Math.PI / 180
   const raan = parseFloat(line2.substring(17, 25)) * Math.PI / 180
-  const eccentricity = parseFloat('0.' + line2.substring(26, 33))
+  const eccentricity = parseFloat(`0.${line2.substring(26, 33)}`)
   const argPerigee = parseFloat(line2.substring(34, 42)) * Math.PI / 180
   const meanAnomaly = parseFloat(line2.substring(43, 51)) * Math.PI / 180
   const meanMotion = parseFloat(line2.substring(52, 63))
+  const epoch = tleEpoch(line1)
 
-  const epochYear = parseInt(line1.substring(18, 20))
-  const epochDay = parseFloat(line1.substring(20, 32))
-  const epoch = new Date(Date.UTC(2000 + epochYear, 0, 1))
-  epoch.setUTCDate(epoch.getUTCDate() + Math.floor(epochDay) - 1)
-  epoch.setUTCHours(0, 0, 0, (epochDay - Math.floor(epochDay)) * 86400)
-  const elapsedMs = date.getTime() - epoch.getTime()
-  const elapsedDays = elapsedMs / (1000 * 60 * 60 * 24)
+  if (!epoch || ![inclination, raan, eccentricity, argPerigee, meanAnomaly, meanMotion].every(Number.isFinite)) {
+    return { lat: 0, lon: 0, altitude: 0, valid: false }
+  }
 
+  const elapsedDays = (date.getTime() - epoch.getTime()) / 86400000
   const currentMeanAnomaly = meanAnomaly + 2 * Math.PI * meanMotion * elapsedDays
 
   let E = currentMeanAnomaly
-  for (let i = 0; i < 5; i++) {
-    E = E - (E - eccentricity * Math.sin(E) - currentMeanAnomaly) / (1 - eccentricity * Math.cos(E))
+  for (let i = 0; i < 8; i += 1) {
+    E -= (E - eccentricity * Math.sin(E) - currentMeanAnomaly) / (1 - eccentricity * Math.cos(E))
   }
 
   const trueAnomaly = 2 * Math.atan2(
     Math.sqrt(1 + eccentricity) * Math.sin(E / 2),
     Math.sqrt(1 - eccentricity) * Math.cos(E / 2)
   )
-
-  const GM = 398600.4418
+  const mu = 398600.4418
   const n = meanMotion * 2 * Math.PI / 86400
-  const semiMajor = Math.pow(GM / (n * n), 1 / 3)
+  const semiMajor = Math.pow(mu / (n * n), 1 / 3)
+  const radius = semiMajor * (1 - eccentricity * Math.cos(E))
+  const argument = argPerigee + trueAnomaly
 
-  const argLat = argPerigee + trueAnomaly
+  const xOrb = radius * Math.cos(argument)
+  const yOrb = radius * Math.sin(argument)
+  const x = xOrb * Math.cos(raan) - yOrb * Math.cos(inclination) * Math.sin(raan)
+  const y = xOrb * Math.sin(raan) + yOrb * Math.cos(inclination) * Math.cos(raan)
+  const z = yOrb * Math.sin(inclination)
 
-  const r = semiMajor * (1 - eccentricity * Math.cos(E))
-
-  const xOrb = r * Math.cos(argLat)
-  const yOrb = r * Math.sin(argLat)
-
-  const xInertial =
-    xOrb * (Math.cos(raan) * Math.cos(argPerigee) - Math.sin(raan) * Math.cos(inclination) * Math.sin(argPerigee)) -
-    yOrb * (Math.cos(raan) * Math.sin(argPerigee) + Math.sin(raan) * Math.cos(inclination) * Math.cos(argPerigee))
-
-  const yInertial =
-    xOrb * (Math.sin(raan) * Math.cos(argPerigee) + Math.cos(raan) * Math.cos(inclination) * Math.sin(argPerigee)) -
-    yOrb * (Math.sin(raan) * Math.sin(argPerigee) - Math.cos(raan) * Math.cos(inclination) * Math.cos(argPerigee))
-
-  const zInertial = xOrb * Math.sin(inclination) * Math.sin(argPerigee) +
-                    yOrb * Math.sin(inclination) * Math.cos(argPerigee)
-
-  const theta = (2 * Math.PI * (elapsedDays + (date.getUTCHours() + date.getUTCMinutes() / 60) / 24) * 1.00273790935) % (2 * Math.PI)
-
-  const lat = Math.asin(zInertial / r) * 180 / Math.PI
-  let lon = Math.atan2(yInertial, xInertial) * 180 / Math.PI - theta * 180 / Math.PI
+  const gmstApprox = (2 * Math.PI * (elapsedDays * 1.00273790935)) % (2 * Math.PI)
+  const lat = Math.asin(z / radius) * 180 / Math.PI
+  let lon = Math.atan2(y, x) * 180 / Math.PI - gmstApprox * 180 / Math.PI
   lon = ((lon + 540) % 360) - 180
+  const altitude = radius - 6371
 
-  const earthRadius = 6371
-  const altitude = r - earthRadius
-
-  return { lat, lon, altitude, valid: !isNaN(lat) && !isNaN(lon) }
+  return { lat, lon, altitude, valid: [lat, lon, altitude].every(Number.isFinite) }
 }
 
-function isAboveHorizon(satLat: number, satLon: number, satAlt: number, obsLat: number, obsLon: number) {
+function visibilityFromSubpoint(satLat: number, satLon: number, satAlt: number, obsLat: number, obsLon: number) {
   const earthRadius = 6371
-  const satR = earthRadius + satAlt
-
+  const satRadius = earthRadius + satAlt
   const dLat = (satLat - obsLat) * Math.PI / 180
   const dLon = (satLon - obsLon) * Math.PI / 180
-  const a = Math.sin(dLat / 2) ** 2 +
-            Math.cos(obsLat * Math.PI / 180) * Math.cos(satLat * Math.PI / 180) *
-            Math.sin(dLon / 2) ** 2
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(obsLat * Math.PI / 180) * Math.cos(satLat * Math.PI / 180) * Math.sin(dLon / 2) ** 2
   const angularDist = 2 * Math.asin(Math.min(1, Math.sqrt(a)))
-
-  const cosElev = (satR * Math.cos(angularDist) - earthRadius) /
-                  Math.sqrt(satR ** 2 + earthRadius ** 2 - 2 * satR * earthRadius * Math.cos(angularDist))
-  const elevation = Math.atan(cosElev / Math.sqrt(1 - Math.min(1, cosElev ** 2))) * 180 / Math.PI
-
-  return { above: elevation > 5, elevation } // >5° para visibilidade realista
+  const denominator = Math.sqrt(satRadius ** 2 + earthRadius ** 2 - 2 * satRadius * earthRadius * Math.cos(angularDist))
+  const cosElevation = denominator > 0 ? (satRadius * Math.cos(angularDist) - earthRadius) / denominator : -1
+  const bounded = Math.max(-1, Math.min(1, cosElevation))
+  const elevation = Math.asin(bounded) * 180 / Math.PI
+  return { above: elevation > 5, elevation }
 }
 
 export async function GET(request: Request) {
@@ -133,123 +124,77 @@ export async function GET(request: Request) {
   const group = searchParams.get('group') || 'starlink'
   const obsLat = parseFloat(searchParams.get('lat') || '-15.7801')
   const obsLon = parseFloat(searchParams.get('lon') || '-47.9292')
-  const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 200)
+  const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '50', 10), 1), 200)
+  const url = groupUrl(group)
+
+  if (!url) {
+    return NextResponse.json({ error: 'Grupo inválido', groups: Object.keys(CELESTRAK_GROUPS) }, { status: 400 })
+  }
 
   try {
-    const url = CELESTRAK_GROUPS[group]
-    if (!url) {
-      return NextResponse.json(
-        { error: 'Grupo inválido', groups: Object.keys(CELESTRAK_GROUPS) },
-        { status: 400 }
-      )
-    }
-
     const response = await fetch(url, {
-      signal: AbortSignal.timeout(3000),
+      signal: AbortSignal.timeout(6000),
       headers: { 'User-Agent': 'AussyOntech/1.0' },
+      cache: 'no-store',
     })
+    if (!response.ok) throw new Error(`CelesTrak retornou ${response.status}`)
 
-    if (!response.ok) {
-      throw new Error(`Celestrak retornou ${response.status}`)
-    }
-
-    const text = await response.text()
-    const sats = parseTle(text)
+    const sats = parseTle(await response.text())
+    if (!sats.length) throw new Error('CelesTrak retornou conjunto TLE vazio')
 
     const now = new Date()
-    const computed = sats
-      .map((sat) => {
-        const subpoint = calculateSubpoint(sat.line1, sat.line2, now)
-        if (!subpoint.valid) return null
-        const visibility = isAboveHorizon(subpoint.lat, subpoint.lon, subpoint.altitude, obsLat, obsLon)
-        return {
-          name: sat.name,
-          position: subpoint,
-          visibility,
-        }
-      })
-      .filter(Boolean) as Array<{
-        name: string
-        position: { lat: number; lon: number; altitude: number; valid: boolean }
-        visibility: { above: boolean; elevation: number }
-      }>
+    const computed = sats.map((sat) => {
+      const position = calculateApproxSubpoint(sat.line1, sat.line2, now)
+      if (!position.valid) return null
+      const epoch = tleEpoch(sat.line1)
+      const visibility = visibilityFromSubpoint(position.lat, position.lon, position.altitude, obsLat, obsLon)
+      return {
+        name: sat.name,
+        position,
+        visibility,
+        tleEpoch: epoch?.toISOString() || null,
+        tleAgeHours: epoch ? Math.max(0, (now.getTime() - epoch.getTime()) / 3600000) : null,
+      }
+    }).filter(Boolean) as Array<{
+      name: string
+      position: { lat: number; lon: number; altitude: number; valid: boolean }
+      visibility: { above: boolean; elevation: number }
+      tleEpoch: string | null
+      tleAgeHours: number | null
+    }>
 
-    computed.sort((a, b) => {
-      if (a.visibility.above && !b.visibility.above) return -1
-      if (!a.visibility.above && b.visibility.above) return 1
-      return b.visibility.elevation - a.visibility.elevation
-    })
-
-    const visible = computed.filter((s) => s.visibility.above)
+    computed.sort((a, b) => Number(b.visibility.above) - Number(a.visibility.above) || b.visibility.elevation - a.visibility.elevation)
 
     return NextResponse.json({
       group,
+      celestrakGroup: CELESTRAK_GROUPS[group],
       observer: { lat: obsLat, lon: obsLon },
       timestamp: now.toISOString(),
-      source: 'celestrak.org (NORAD)',
+      source: 'CelesTrak / NORAD GP data',
+      sourceUrl: url,
+      dataQuality: 'live-tle-approx-position',
+      propagation: 'aproximação visual — não SGP4',
       total: computed.length,
-      visible: visible.length,
+      visible: computed.filter((sat) => sat.visibility.above).length,
       satellites: computed.slice(0, limit),
       cached: false,
+      fallback: false,
+      warning: 'Posições/elevações são aproximações para visualização. Não usar para navegação, apontamento de antena ou decisão operacional.',
     })
-  } catch (error) {
-    // Fallback: usa TLEs hardcoded + simula múltiplos satélites da constelação
-    const baseSats = HARDCODED_TLES.filter((s) => s.group === group)
-    const multiplier = Math.max(1, Math.ceil((CONSTELLATION_COUNTS[group] || 50) / baseSats.length))
-    const sats: TleSatellite[] = []
-    for (let i = 0; i < multiplier; i++) {
-      baseSats.forEach((base, j) => {
-        // Modifica o TLE levemente para distribuir os satélites em RAAN diferentes
-        const baseRaan = parseFloat(base.line2.substring(17, 25))
-        const newRaan = ((baseRaan + (i * 360 / multiplier)) % 360).toFixed(4).padStart(8, '0')
-        const newLine2 = base.line2.substring(0, 17) + newRaan + base.line2.substring(25)
-        const meanAnomaly = parseFloat(base.line2.substring(43, 51))
-        const newMA = ((meanAnomaly + (j * 30) + (i * 7)) % 360).toFixed(4).padStart(8, '0')
-        const newLine2Final = newLine2.substring(0, 43) + newMA + newLine2.substring(51)
-        sats.push({
-          name: `${base.name}${i > 0 ? `+${i}` : ''}`,
-          line1: base.line1,
-          line2: newLine2Final,
-        })
-      })
-    }
-
-    const now = new Date()
-    const computed = sats
-      .map((sat) => {
-        const subpoint = calculateSubpoint(sat.line1, sat.line2, now)
-        if (!subpoint.valid) return null
-        const visibility = isAboveHorizon(subpoint.lat, subpoint.lon, subpoint.altitude, obsLat, obsLon)
-        return {
-          name: sat.name,
-          position: subpoint,
-          visibility,
-        }
-      })
-      .filter(Boolean) as Array<{
-        name: string
-        position: { lat: number; lon: number; altitude: number; valid: boolean }
-        visibility: { above: boolean; elevation: number }
-      }>
-
-    computed.sort((a, b) => {
-      if (a.visibility.above && !b.visibility.above) return -1
-      if (!a.visibility.above && b.visibility.above) return 1
-      return b.visibility.elevation - a.visibility.elevation
-    })
-
-    const visible = computed.filter((s) => s.visibility.above)
-
+  } catch {
     return NextResponse.json({
       group,
       observer: { lat: obsLat, lon: obsLon },
-      timestamp: now.toISOString(),
-      source: 'NORAD/Celestrak TLE cache (offline fallback)',
-      total: computed.length,
-      visible: visible.length,
-      satellites: computed.slice(0, limit),
-      fallback: true,
-      note: 'Usando TLEs em cache local (Celestrak indisponível na rede). Posições são aproximadas.',
-    })
+      timestamp: new Date().toISOString(),
+      source: 'CelesTrak indisponível',
+      dataQuality: 'unavailable',
+      total: 0,
+      visible: 0,
+      satellites: [],
+      cached: false,
+      fallback: false,
+      error: 'unavailable',
+      note: 'Sem TLE real confirmado nesta resposta. O Service Worker usa a última cópia CelesTrak válida quando disponível.',
+    }, { status: 503 })
   }
 }

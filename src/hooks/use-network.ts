@@ -4,18 +4,14 @@ import { useEffect, useState, useCallback } from 'react'
 
 interface NetworkState {
   online: boolean
-  effectiveType?: string // '4g' | '3g' | '2g' | 'slow-2g'
-  downlink?: number // Mbps
-  rtt?: number // ms
+  effectiveType?: string
+  downlink?: number
+  rtt?: number
   saveData?: boolean
-  type?: string // 'wifi' | 'cellular' | 'ethernet' | etc
+  type?: string
   supported: boolean
 }
 
-/**
- * Hook para monitorar o status real da rede no navegador.
- * Usa Network Information API (Chrome/Edge) + navigator.onLine (todos browsers).
- */
 export function useNetworkStatus(): NetworkState {
   const [state, setState] = useState<NetworkState>({
     online: typeof navigator !== 'undefined' ? navigator.onLine : true,
@@ -25,8 +21,8 @@ export function useNetworkStatus(): NetworkState {
   useEffect(() => {
     const update = () => {
       const conn = (navigator as any).connection ||
-                   (navigator as any).mozConnection ||
-                   (navigator as any).webkitConnection
+        (navigator as any).mozConnection ||
+        (navigator as any).webkitConnection
 
       setState({
         online: navigator.onLine,
@@ -42,55 +38,63 @@ export function useNetworkStatus(): NetworkState {
     update()
     window.addEventListener('online', update)
     window.addEventListener('offline', update)
-    if ((navigator as any).connection) {
-      (navigator as any).connection.addEventListener('change', update)
-    }
+    const connection = (navigator as any).connection
+    connection?.addEventListener?.('change', update)
 
     return () => {
       window.removeEventListener('online', update)
       window.removeEventListener('offline', update)
-      if ((navigator as any).connection) {
-        (navigator as any).connection.removeEventListener('change', update)
-      }
+      connection?.removeEventListener?.('change', update)
     }
   }, [])
 
   return state
 }
 
-/**
- * Hook para medir latência real periodicamente.
- */
 export function useLatencyProbe(url = '/api/network/status', intervalMs = 15000) {
   const [latency, setLatency] = useState<number | null>(null)
   const [isReachable, setIsReachable] = useState<boolean | null>(null)
   const [lastCheck, setLastCheck] = useState<Date | null>(null)
 
   const probe = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setLatency(null)
+      setIsReachable(false)
+      setLastCheck(new Date())
+      return
+    }
+
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => controller.abort(), 5000)
     const start = performance.now()
+
     try {
-      const res = await fetch(`${url}?t=${Date.now()}`, {
+      const res = await fetch(url, {
         cache: 'no-store',
-        signal: AbortSignal.timeout(5000),
+        signal: controller.signal,
       })
       const elapsed = performance.now() - start
-      setLatency(Math.round(elapsed))
-      setIsReachable(res.ok)
+      const servedFromCache = res.headers.get('X-Aussy-Cached') === 'true' ||
+        res.headers.get('X-Aussy-Offline') === 'true'
+
+      setLatency(servedFromCache ? null : Math.round(elapsed))
+      setIsReachable(res.ok && !servedFromCache)
       setLastCheck(new Date())
     } catch {
       setLatency(null)
       setIsReachable(false)
       setLastCheck(new Date())
+    } finally {
+      window.clearTimeout(timeout)
     }
   }, [url])
 
   useEffect(() => {
-    // Inicia em timeout para evitar setState síncrono no effect
-    const initialTimer = setTimeout(probe, 100)
-    const id = setInterval(probe, intervalMs)
+    const initialTimer = window.setTimeout(() => void probe(), 100)
+    const id = window.setInterval(() => void probe(), intervalMs)
     return () => {
-      clearTimeout(initialTimer)
-      clearInterval(id)
+      window.clearTimeout(initialTimer)
+      window.clearInterval(id)
     }
   }, [probe, intervalMs])
 
@@ -121,15 +125,10 @@ const DEFAULT_CAPS: DeviceCapabilities = {
   platform: '',
 }
 
-/**
- * Hook para detectar capacidades do dispositivo (satellite SOS, Bluetooth, etc.)
- * SSR-safe: retorna valores padrão no servidor e detecta no cliente após montagem.
- */
 export function useDeviceCapabilities(): DeviceCapabilities {
   const [caps, setCaps] = useState<DeviceCapabilities>(DEFAULT_CAPS)
 
   useEffect(() => {
-    // Garante que só roda no navegador
     if (typeof window === 'undefined' || typeof navigator === 'undefined') return
 
     const ua = navigator.userAgent
