@@ -8,6 +8,7 @@
     "start": "next start -p 3000",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
+    "test:sw": "node scripts/test-sw-runtime.mjs",
     "verify:repo": "node scripts/verify-repo.mjs"
   },
   "dependencies": {
