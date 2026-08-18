@@ -1,9 +1,7 @@
-// Base de dados offline — sobrevivência, rádio, comunicação visual
-// Tudo cacheado pelo Service Worker. Fontes: ITU-R, ANATEL, Cruz Vermelha, MARINE, protocolos militares básicos
-// 100% offline após primeiro carregamento.
+// Base local de preparação e sobrevivência — conteúdo estático para apoio offline.
+// Revisão de segurança: 2026-08-18. Não substitui orientação de autoridade pública,
+// serviço de emergência, profissional de saúde, autoridade marítima/aeronáutica ou Anatel.
 
-// ============= RÁDIO: frequências de emergência =============
-// Fonte: ANATEL, ITU-R Radio Regulations Appendices 15 & 17, MARINE VHF
 export interface RadioChannel {
   freq: string;
   band: string;
@@ -13,35 +11,32 @@ export interface RadioChannel {
   license: 'livre' | 'restrita' | 'profissional';
 }
 
+/**
+ * Referências de rádio deliberadamente conservadoras.
+ * A classificação `license` é usada apenas pela UI legada para indicar que
+ * TRANSMISSÃO não deve ser tratada como livre. Recepção de radiodifusão local
+ * continua sendo uma ferramenta útil em desastres.
+ */
 export const EMERGENCY_RADIO_CHANNELS: RadioChannel[] = [
-  // VHF Marítimo — funciona em qualquer rádio VHF marítimo, mesmo sem licença em emergência
-  { freq: '156.800 MHz', band: 'VHF Marítimo', name: 'Canal 16', use: 'Emergência, chamada de socorro, escuta permanente', range: '30-50 km (linha de visada)', license: 'livre' },
-  { freq: '156.525 MHz', band: 'VHF Marítimo', name: 'Canal 70', use: 'Chamada Digital Seletiva (DSC) de socorro', range: '30-50 km', license: 'livre' },
-
-  // VHF Amador (rádio amador) — requer licença, mas rádios Baofeng podem receber
-  { freq: '145.000 MHz', band: 'VHF Amador (2m)', name: 'Chamada simplex', use: 'Radioamadores monitoram para emergências', range: '5-30 km urbano, 50+ km rural', license: 'restrita' },
-  { freq: '146.520 MHz', band: 'VHF Amador (2m)', name: 'Nacional simplex', use: 'Frequência de chamada nacional radioamadores', range: '5-30 km', license: 'restrita' },
-
-  // UHF Amador
-  { freq: '446.000 MHz', band: 'UHF Amador (70cm)', name: 'PMR446 simplex', use: 'PMR446 — rádios portáteis livres no Brasil (até 0.5W)', range: '1-3 km urbano', license: 'livre' },
-
-  // CB (Cidadão) — PX, livre no Brasil
-  { freq: '27.185 MHz', band: 'CB (Cidadão)', name: 'Canal 19', use: 'Canal de estrada — caminhoneiros monitoram 24h', range: '5-15 km', license: 'livre' },
-  { freq: '27.065 MHz', band: 'CB (Cidadão)', name: 'Canal 9', use: 'Canal de emergência CB', range: '5-15 km', license: 'livre' },
-
-  // Avião — emergência aérea
-  { freq: '121.500 MHz', band: 'VHF Aeronáutico', name: 'Emergência aérea', use: 'Guarda aérea internacional — ELT/EPIRB', range: 'Linha de visada (até 200 km aeronave-solo)', license: 'profissional' },
-
-  // HF Marítimo
-  { freq: '2182 kHz', band: 'HF Marítimo', name: 'Socorro radiotelefonia', use: 'Chamada de socorro MF/HF internacional', range: '300-1500 km', license: 'profissional' },
-
-  // FM Comercial — informação de emergência
-  { freq: '87.5-108.0 MHz', band: 'FM Comercial', name: 'Rádios locais', use: 'Defesa Civil transmite alertas via rádios comerciais', range: '30-100 km', license: 'livre' },
-  { freq: '530-1710 kHz', band: 'AM Comercial', name: 'Rádios locais AM', use: 'AM tem maior alcance que FM — boa em desastres', range: '100-500 km à noite', license: 'livre' },
+  {
+    freq: '156.800 MHz',
+    band: 'VHF Marítimo',
+    name: 'Canal 16 — socorro e segurança',
+    use: 'Frequência internacional de socorro e segurança por radiotelefonia marítima. Para transmitir, use equipamento/serviço adequado e siga as regras e orientações da autoridade competente.',
+    range: 'Depende de antena, potência, relevo e linha de visada; não há alcance garantido.',
+    license: 'profissional',
+  },
+  {
+    freq: 'FM/AM local',
+    band: 'Radiodifusão',
+    name: 'Escuta de emissoras locais',
+    use: 'Use um rádio receptor para acompanhar comunicados oficiais e notícias locais durante interrupções de internet. Confirme instruções críticas em canais oficiais quando possível.',
+    range: 'Varia conforme emissora, terreno, propagação e equipamento.',
+    license: 'livre',
+  },
 ];
 
-// ============= MORSE: tabela completa =============
-// Para sinalização visual (lanterna) e sonora (apito)
+// Morse para sinalização visual/sonora. SOS em Morse é ...---...
 export const MORSE_CODE: Record<string, string> = {
   A: '.-', B: '-...', C: '-.-.', D: '-..', E: '.', F: '..-.', G: '--.', H: '....',
   I: '..', J: '.---', K: '-.-', L: '.-..', M: '--', N: '-.', O: '---', P: '.--.',
@@ -50,10 +45,9 @@ export const MORSE_CODE: Record<string, string> = {
   '0': '-----', '1': '.----', '2': '..---', '3': '...--', '4': '....-',
   '5': '.....', '6': '-....', '7': '--...', '8': '---..', '9': '----.',
   '.': '.-.-.-', ',': '--..--', '?': '..--..', '!': '-.-.--',
-  'SOS': '...---...',
+  SOS: '...---...',
 };
 
-// ============= GUIA DE SOBREVIVÊNCIA — offline =============
 export interface SurvivalSkill {
   id: string;
   category: 'agua' | 'fogo' | 'abrigo' | 'sinalizacao' | 'navegacao' | 'alimento' | 'primeiros_socorros';
@@ -63,229 +57,235 @@ export interface SurvivalSkill {
   duration: string;
   steps: string[];
   warnings?: string[];
+  verifiedAt?: string;
+  sourceLabel?: string;
+  sourceUrls?: string[];
 }
 
+const VERIFIED_AT = '2026-08-18';
+const MS_WATER = 'https://www.gov.br/saude/pt-br/assuntos/saude-de-a-a-z/e/enchentes/cuidados-com-a-agua';
+const AHA_FIRST_AID = 'https://cpr.heart.org/en/resuscitation-science/2024-first-aid-guidelines';
+const DEFESA_CIVIL_PR = 'https://www.defesacivil.pr.gov.br/Pagina/Kit-de-Emergencia-pessoal';
+
 export const SURVIVAL_SKILLS: SurvivalSkill[] = [
-  // ÁGUA
   {
     id: 'purificar-agua',
     category: 'agua',
-    title: 'Purificar água para beber',
+    title: 'Tornar água mais segura para beber',
     icon: 'droplet',
     severity: 'urgente',
-    duration: '15-30 min',
+    duration: 'seguir método oficial',
     steps: [
-      'Filtra grosseiramente com pano para remover partículas',
-      'Método 1 — FERVER: mantenha fervura por 1 minuto (3 min em altitude >2000m)',
-      'Método 2 — CLORO: 2 gotas de água sanitária (2,5%) por litro — esperar 30 min',
-      'Método 3 — IODO: 5 gotas de tintura de iodo 2% por litro — esperar 30 min',
-      'Método 4 — SOLAR: garrafa PET transparente no sol por 6h (SODIS — mata bactérias)',
-      'Método 5 — FILTRO DIY: carvão + areia + cascalho em camadas em garrafa PET cortada',
-      'Sempre armazene em recipiente limpo e fechado',
+      'Prefira água fornecida por serviço público, Defesa Civil ou fonte engarrafada íntegra quando disponível',
+      'Se a água estiver turva, filtre/co-e primeiro com filtro doméstico, coador de papel ou pano limpo',
+      'Para tratamento domiciliar em emergência, siga a orientação atual do Ministério da Saúde para o produto e a situação local',
+      'Se usar hipoclorito de sódio, confirme no rótulo que a concentração e a composição correspondem exatamente à orientação oficial antes de dosar',
+      'Na ausência do produto correto, use a alternativa de fervura conforme a orientação oficial vigente e armazene a água tratada em recipiente limpo e tampado',
+      'Se houver suspeita de combustível, produto químico, agrotóxico ou material radioativo, NÃO tente tornar a água potável por fervura ou cloração; procure outra fonte',
     ],
     warnings: [
-      'Água barrenta/lodosa NUNCA deve ser bebida sem filtrar E purificar',
-      'Cloro em excesso é tóxico — nunca mais que 4 gotas por litro',
-      'SODIS não funciona em dias nublados',
-      'Fervura não remove toxinas químicas — só mata micro-organismos',
+      'NÃO improvise dose de água sanitária de concentração desconhecida',
+      'NÃO use filtro caseiro de areia/carvão como substituto de desinfecção microbiológica',
+      'NÃO confie em cor, cheiro ou transparência para concluir que uma água é potável',
+      'Orientações locais podem mudar conforme o desastre; priorize Ministério da Saúde, vigilância sanitária e Defesa Civil',
     ],
+    verifiedAt: VERIFIED_AT,
+    sourceLabel: 'Ministério da Saúde — Cuidados com a água em emergências',
+    sourceUrls: [MS_WATER],
   },
   {
     id: 'encontrar-agua',
     category: 'agua',
-    title: 'Encontrar água na natureza',
+    title: 'Obter água sem aumentar o risco',
     icon: 'droplet',
     severity: 'urgente',
     duration: 'variável',
     steps: [
-      'Siga animais — trilhas convergem para água, especialmente ao amanhecer/entardecer',
-      'Vales e depressões do terreno: água escorre para o ponto mais baixo',
-      'Plantas indicadoras: samambaias, palmeiras, juncos crescem onde há água',
-      'Coleta orvalho: amarrar pano limpo em pernas altas e torcer de manhã',
-      'Coleta chuva: lona/cesto suspenso, ou diretamente de folhas grandes',
-      'Plantas com água: cipó-titulo, babosa, cactos (cuidado com tóxicos)',
-      'INCOMPATÍVEL com consumo: água salgada, salobra, estagnada com larvas',
+      'Priorize água potável distribuída por autoridades, pontos de abastecimento e recipientes lacrados',
+      'Em campo, água de chuva coletada diretamente em superfície limpa tende a ser opção preferível a água parada ou contaminada, mas ainda deve ser tratada quando houver dúvida',
+      'Qualquer água de rio, córrego, nascente ou reservatório natural pode conter micro-organismos ou contaminantes; trate antes de beber',
+      'Proteja a água coletada em recipiente limpo e fechado para evitar recontaminação',
     ],
     warnings: [
-      'NUNCA beba urina, sangue ou água do mar — desidratam mais rápido',
-      'Água clara não significa potável — sempre purifique',
+      'NÃO beba água do mar, urina ou líquidos corporais como estratégia de hidratação',
+      'NÃO consuma água de enchente ou água com suspeita de esgoto, combustível ou produtos químicos',
+      'NÃO use plantas, cactos, cipós ou seiva como “fonte segura” sem conhecimento especializado',
     ],
+    verifiedAt: VERIFIED_AT,
+    sourceLabel: 'Ministério da Saúde — segurança da água em emergências',
+    sourceUrls: [MS_WATER],
   },
-
-  // FOGO
   {
     id: 'acender-fogo',
     category: 'fogo',
-    title: 'Acender fogo sem isqueiro',
+    title: 'Uso seguro de fogo em emergência',
     icon: 'flame',
     severity: 'informativo',
-    duration: '5-30 min',
+    duration: 'somente quando seguro e permitido',
     steps: [
-      'Reúna 3 níveis de material: isca (seca, fina), gravetos pequenos, lenha grossa',
-      'Isca ideal: casca de árvore seca, capim seco, algodão, penas, fiapos de corda',
-      'Método 1 — Fricção (arco):-madeira macia (moringa, balsa) + corda + vareta',
-      'Método 2 — LENTE: óculos, lupa, fundo de garrafa PET com água + sol',
-      'Método 3 — PEDRA: pederneira + aço (canivete) + estopa seca',
-      'Método 4 — BATERIA + LÃ METÁLICA: pilha AA tocando lã de aço = faísca',
-      'Faça pirâmide com isca no centro, acenda, sopre suavemente, adicione gravetos',
-      'Sempre prepare local: afaste vegetação, cerque com pedras',
+      'Antes de acender qualquer fogo, verifique risco de incêndio, vento, vegetação seca e restrições da autoridade local',
+      'Prefira fonte de calor controlada e equipamento próprio em vez de técnicas improvisadas',
+      'Mantenha água ou meio de extinção disponível e uma área limpa ao redor',
+      'Use o menor fogo necessário e mantenha supervisão contínua',
+      'Apague completamente antes de sair; cinzas devem estar frias ao toque antes de abandono do local',
     ],
     warnings: [
-      'Nunca deixe fogo sem supervisão — apague completamente com água e terra',
-      'Em floresta seca, faça fogueira mínima — risco de incêndio florestal',
+      'NÃO faça fogueira durante proibição de fogo ou em vegetação seca com risco de propagação',
+      'NÃO use bateria, combustível, solvente ou aerossol para improvisar ignição',
+      'NÃO use fogo em ambiente fechado ou pouco ventilado por risco de intoxicação por monóxido de carbono',
     ],
+    verifiedAt: VERIFIED_AT,
+    sourceLabel: 'Princípio de prevenção de incêndio e segurança de abrigo; siga autoridade local',
+    sourceUrls: [DEFESA_CIVIL_PR],
   },
-
-  // ABRIGO
   {
     id: 'construir-abrigo',
     category: 'abrigo',
-    title: 'Construir abrigo de emergência',
+    title: 'Abrigo temporário com menor risco',
     icon: 'home',
     severity: 'informativo',
-    duration: '1-2 horas',
+    duration: 'variável',
     steps: [
-      'Local: seco, elevado, longe de quedas de árvores, fora de leito de rio seco',
-      'Tipo 1 — Tipi: 3 galhos longos em triângulo + folhas grandes/musgo',
-      'Tipo 2 — DeUma-Árvore: galho apoiado em árvore, coberto com folhagem',
-      'Tipo 3 — Buraco na neve: neve compactada isola do frio (em locais com neve)',
-      'Isolamento do chão: CRÍTICO — coloque 15cm de folhas/galhos antes de deitar',
-      'Tamanho: pequeno suficiente para aquecer com calor do corpo',
-      'Direção: entrada de costas para o vento predominante',
+      'Primeiro procure abrigo oficial, edificação segura ou ponto indicado pela Defesa Civil quando acessível',
+      'Evite leito de rio, encosta instável, árvore comprometida, linha elétrica, área alagável e local exposto a vento forte',
+      'Isole o corpo do solo frio ou molhado usando material seco e estável',
+      'Proteja-se de chuva, vento, frio e sol sem bloquear ventilação necessária',
+      'Mantenha saída livre e não use chama, carvão ou gerador em espaço fechado',
     ],
     warnings: [
-      'Perde mais calor pelo chão do que pelo ar — sempre isole',
-      'Não durma diretamente em terra/rocha — sifão térmico causa hipotermia',
+      'NÃO permaneça em estrutura com risco de desabamento, deslizamento ou inundação',
+      'NÃO durma próximo a gerador, motor ou fogo em ambiente fechado',
     ],
+    verifiedAt: VERIFIED_AT,
+    sourceLabel: 'Preparação geral — priorize orientações da Defesa Civil local',
+    sourceUrls: [DEFESA_CIVIL_PR],
   },
-
-  // SINALIZAÇÃO
   {
     id: 'sinalizar-resgate',
     category: 'sinalizacao',
-    title: 'Sinalizar para resgate',
+    title: 'Sinalizar pedido de ajuda',
     icon: 'alert',
     severity: 'urgente',
-    duration: 'contínuo',
+    duration: 'repetir com segurança',
     steps: [
-      'Regra 3: três de qualquer coisa (fumaça, apito, fogo, som) = SOS internacional',
-      'Fumaça: fogueira + vegetação verde úmida = coluna branca visível a km',
-      'Espelho de sinal: CD, espelho, lata polida — reflita sol para aeronaves',
-      'Sinalização solo: escrever SOS ou X grande em área aberta (rochas, roupas)',
-      'Cor: laranja/magenta visível a 5+ km. Branco/azul não visível de longe',
-      'À noite: 3 fogueiras em triângulo, lanterna piscando em padrão SOS',
-      'Som: 3 apitos curtos, pausa, repetir. Apito ouve a 2+ km',
-      'Luz: flash repetido (lanterna/câmera) em padrão SOS (3 curtos, 3 longos, 3 curtos)',
+      'Se houver cobertura, tente primeiro os números oficiais de emergência e compartilhe sua localização',
+      'Use apito, lanterna ou material contrastante para aumentar sua visibilidade sem se deslocar para área perigosa',
+      'SOS em Morse é 3 curtos, 3 longos, 3 curtos (...---...) e pode ser repetido com luz ou som',
+      'Em área aberta, marque visualmente sua posição com material contrastante sem destruir vegetação nem criar novo risco',
+      'Economize bateria e energia: faça sinais em intervalos e mantenha capacidade para responder ao resgate',
     ],
     warnings: [
-      'NÃO acenda fogueira em floresta seca — pode virar incêndio',
-      'Use fumaça apenas durante o dia — à noite use luz',
+      'NÃO provoque incêndio ou fumaça em área de risco apenas para sinalizar',
+      'NÃO caminhe para local perigoso só para tentar obter visibilidade',
+      'Nenhum alcance de apito, luz ou espelho é garantido',
     ],
   },
-
-  // NAVEGAÇÃO
   {
     id: 'navegar-sol',
     category: 'navegacao',
-    title: 'Navegar pelo Sol',
+    title: 'Sol como referência aproximada',
     icon: 'sun',
     severity: 'informativo',
-    duration: 'instantâneo',
+    duration: 'aproximação',
     steps: [
-      'Sol nasce a Leste (aprox.) e se põe a Oeste (aprox.)',
-      'Meio-dia solar: Sol está a Norte (Brasil, hemisfério sul)',
-      'Método do relógio: aponte ponteiro das horas para o Sol. Meio entre horas e 12h = Norte (hemisfério sul) ou Sul (hemisfério norte)',
-      'Método da sombra: finque vareta, marque ponta da sombra. Espere 15 min, marque nova posição. Linha 1→2 = Oeste→Leste',
-      'Sempre confirme com outro método se possível',
+      'Use GPS, mapa e bússola quando disponíveis; referências pelo Sol são apenas auxiliares',
+      'O Sol nasce aproximadamente a leste e se põe aproximadamente a oeste, com variação por data e latitude',
+      'Observe a trajetória e a sombra apenas para orientação geral e confirme por outro método',
+      'Se estiver perdido, muitas vezes permanecer em local seguro e sinalizar é melhor do que caminhar sem rota confirmada',
+    ],
+    warnings: [
+      'NÃO use método de relógio/sombra como substituto de navegação precisa',
+      'NÃO presuma que o Sol estará exatamente a norte ao meio-dia em qualquer local/data do Brasil',
     ],
   },
   {
     id: 'navegar-estrelas',
     category: 'navegacao',
-    title: 'Navegar pelo Cruzeiro do Sul',
+    title: 'Cruzeiro do Sul como referência aproximada',
     icon: 'star',
     severity: 'informativo',
-    duration: 'instantâneo',
+    duration: 'aproximação',
     steps: [
-      'Localize a Constelação do Cruzeiro do Sul (4 estrelas em cruz + menor embaixo)',
-      'Estenda o eixo maior da cruz 4,5 vezes para baixo',
-      'Esse ponto é o Pólo Sul Celeste — sempre acima do pólo sul geográfico',
-      'Desça verticalmente até o horizonte: esse é o Sul verdadeiro',
-      'Útil no hemisfério sul — Brasil inteiro',
+      'Use a constelação apenas como referência auxiliar quando você souber identificá-la com segurança',
+      'O prolongamento do eixo maior do Cruzeiro do Sul pode ajudar a estimar a direção do polo celeste sul',
+      'Confirme a direção com bússola, GPS, mapa ou outra referência independente quando possível',
+    ],
+    warnings: [
+      'Identificação errada de estrelas produz direção errada; não use como único método em deslocamento de risco',
     ],
   },
-
-  // ALIMENTO
   {
     id: 'alimento-selvagem',
     category: 'alimento',
-    title: 'Regras de alimentação selvagem',
+    title: 'Segurança alimentar em situação de isolamento',
     icon: 'leaf',
     severity: 'urgente',
-    duration: 'variável',
+    duration: 'priorize alimento conhecido',
     steps: [
-      'Regra de ouro: NÃO coma se não tem 100% de certeza da identificação',
-      'Plantas seguras (Brasil): palmito, coquinho-azedo, jabuticaba, araçá, pitanga',
-      'Plantas PERIGOSAS: mandioca brava (cianeto), mamona, comigo-ninguém-pode',
-      'Insetos comestíveis: gafanhotos (cozinhe), larvas de palmeira, formigas tanajuras',
-      'Pesca: peixes de água doce são seguros, exceto em águas poluídas',
-      'Regra universal de teste (último recurso): esfregue na pele → espere 15 min → lábio → espere → língua → espere → mastigue NÃO engula → cuspa → se nada após 3h, coma pequena porção',
-      'Lembre: humano vive 3 semanas sem comida, 3 DIAS sem água — priorize água',
+      'Priorize alimentos embalados íntegros, não perecíveis e que você já conhece',
+      'Em enchente, descarte alimento que teve contato com água de inundação ou lama conforme orientação sanitária',
+      'Não use gosto, cheiro, cor ou uma pequena prova para determinar se planta, cogumelo, fruto ou alimento desconhecido é seguro',
+      'Se estiver sem alimento, preserve energia e priorize água segura, abrigo, comunicação e resgate em vez de forrageamento experimental',
     ],
     warnings: [
-      'O teste universal é arriscado — alguns venenos agem horas depois',
-      'Cogumelos: NUNCA teste — alguns parecem comestíveis mas são letais',
+      'NÃO use “teste universal de comestibilidade”; algumas toxinas podem agir em pequena dose ou de forma tardia',
+      'NÃO consuma cogumelos, plantas, raízes, sementes, insetos ou animais silvestres sem identificação segura por especialista',
+      'NÃO presuma que peixe de água doce é sempre seguro; contaminação e toxinas dependem do local e da espécie',
     ],
+    verifiedAt: VERIFIED_AT,
+    sourceLabel: 'Ministério da Saúde — segurança de alimentos em emergências',
+    sourceUrls: ['https://www.gov.br/saude/pt-br/assuntos/saude-de-a-a-z/e/enchentes/cuidados-com-os-alimentos/cuidados-com-os-alimentos/'],
   },
-
-  // PRIMEIROS SOCORROS EXTRAS
   {
     id: 'hipotermia',
     category: 'primeiros_socorros',
-    title: 'Hipotermia',
+    title: 'Hipotermia — reduzir perda de calor',
     icon: 'snow',
     severity: 'critico',
     duration: 'imediato',
     steps: [
-      'Reconheça: tremores, confusão, fala arrastada, sonolência, mãos pálidas',
-      'Tremores PARADOS = caso grave — emergência',
-      'Remova roupas molhadas com cuidado',
-      'Aqueça GRADUALMENTE — nunca mergulhar em água quente (choque térmico)',
-      'Cubra com cobertor, principalmente cabeça (40% do calor sai pela cabeça)',
-      'Beba líquido morno e adoçado se consciente',
-      'Contato pele-a-pele: pessoa saudável sob cobertor compartilha calor',
-      'Sempre busque atendimento médico',
+      'Leve a pessoa para ambiente protegido do frio e do vento quando isso puder ser feito com segurança',
+      'Remova roupa saturada e substitua por camadas secas; isole do chão e cubra cabeça e pescoço',
+      'Use cobertores e, se houver recurso adequado, aquecimento do tronco seguindo as instruções do dispositivo e com proteção entre fonte de calor e pele',
+      'Se estiver alerta e conseguir engolir com segurança, bebida ou alimento calórico pode ajudar em quadro leve',
+      'Acione o serviço de emergência se houver confusão, sonolência importante, fala alterada, pele muito pálida/azulada, congelamento ou piora',
     ],
     warnings: [
-      'NÃO aqueça membros primeiro — sangue frio volta ao coração e piora',
-      'NÃO dê álcool — vasodilatação piora perda de calor',
+      'NÃO esfregue, massageie ou aplique fonte de calor diretamente nas extremidades',
+      'NÃO use banho quente ou imersão em pessoa confusa ou com nível de consciência reduzido',
+      'NÃO use álcool como “aquecimento”',
     ],
+    verifiedAt: VERIFIED_AT,
+    sourceLabel: 'AHA / American Red Cross First Aid 2024 — hypothermia',
+    sourceUrls: [AHA_FIRST_AID],
   },
   {
     id: 'insolacao',
     category: 'primeiros_socorros',
-    title: 'Insolação / Hipertermia',
+    title: 'Hipertermia / suspeita de heatstroke',
     icon: 'sun',
     severity: 'critico',
-    duration: 'imediato',
+    duration: 'resfriar imediatamente',
     steps: [
-      'Reconheça: pele quente e SECA, confusão, temperatura > 40°C, sem suor',
-      'É EMERGÊNCIA — pode ser fatal em 30 min',
-      'Mova para local fresco e sombreado imediatamente',
-      'Remova roupas, refresque com água morna (não gelada) e ventile',
-      'Aplicar compressas nas axilas, virilha, pescoço (vasos grandes)',
-      'NÃO dê líquidos se inconsciente ou confuso — risco de aspiração',
-      'Se consciente: oferecer água com sal (1 colher de chá por litro)',
-      'Chame 192 imediatamente',
+      'Calor intenso + alteração do estado mental (confusão, desorientação, convulsão ou perda de consciência) deve ser tratado como emergência',
+      'Acione o SAMU 192 e remova a pessoa do ambiente quente; retire excesso de roupa',
+      'Inicie resfriamento ativo imediatamente',
+      'Quando for seguro e possível, imersão do corpo (pescoço para baixo) em água fresca a fria é um método rápido de resfriamento',
+      'Se imersão não estiver disponível, use ducha fria, toalhas/lençóis frios, ventilação e outros métodos de resfriamento disponíveis',
+      'Só ofereça líquido fresco se a pessoa estiver alerta e conseguir engolir normalmente',
     ],
     warnings: [
-      'NÃO use gelo diretamente — causa vasoconstrição que piora resfriamento',
-      'NÃO dê medicamentos sem orientação médica',
+      'NÃO espere a pele ficar seca ou a pessoa parar de suar para suspeitar de emergência por calor',
+      'NÃO force líquido em pessoa confusa, convulsionando ou com consciência reduzida',
+      'NÃO prepare “água com sal” caseira como tratamento de heatstroke',
+      'Resfriamento rápido é prioridade enquanto o atendimento é acionado',
     ],
+    verifiedAt: VERIFIED_AT,
+    sourceLabel: 'AHA / American Red Cross First Aid 2024 — exertional hyperthermia and heatstroke',
+    sourceUrls: [AHA_FIRST_AID],
   },
 ];
 
-// ============= PLANTAS: tóxicas e comestíveis comuns no Brasil =============
 export interface PlantInfo {
   name: string;
   scientific: string;
@@ -294,49 +294,69 @@ export interface PlantInfo {
   warning?: string;
 }
 
+/**
+ * A UI legada ainda possui filtros “comestível/medicinal”. Para segurança,
+ * esta build publica apenas exemplos tóxicos/irritantes como alerta visual;
+ * o app não deve ser usado para decidir se uma planta pode ser comida ou usada
+ * como medicamento.
+ */
 export const COMMON_PLANTS: PlantInfo[] = [
-  { name: 'Palmito Pupunha', scientific: 'Bactris gasipaes', type: 'comestivel', description: 'Palmeira nativa. Palmito doce, comestível cru ou cozido.' },
-  { name: 'Pitanga', scientific: 'Eugenia uniflora', type: 'comestivel', description: 'Fruta vermelha doce-ácida, rica em vitamina C. Folhas fazem chá digestivo.' },
-  { name: 'Araçá', scientific: 'Psidium cattleianum', type: 'comestivel', description: 'Parente da goiaba, fruta amarela/vermelha comestível.' },
-  { name: 'Jabuticaba', scientific: 'Plinia cauliflora', type: 'comestivel', description: 'Fruta roxa direto no tronco. Comestível in natura.' },
-  { name: 'Coco', scientific: 'Cocos nucifera', type: 'comestivel', description: 'Água de coco verde hidrata. Polpa nutritiva. Casca fibrosa acende fogo.' },
-  { name: 'Babosa/Aloe', scientific: 'Aloe vera', type: 'medicinal', description: 'Gel da folha trata queimaduras, feridas. NÃO ingerir — laxante forte.' },
-
-  { name: 'Mandioca Brava', scientific: 'Manihot esculenta (amarga)', type: 'toxica', description: 'Raiz contém cianeto. FOUNDAÇÃO — precisa descascar, ralar, espremer, secar, torrar para ser comestível (farinha). NUNCA comer crua.', warning: 'Cianeto — pode matar em minutos se ingerida crua' },
-  { name: 'Mamona', scientific: 'Ricinus communis', type: 'toxica', description: 'Sementes contêm ricina — uma das toxinas mais letais conhecidas. 4 sementes matam adulto. Folhas menos tóxicas mas ainda perigosas.', warning: 'Ricina — sem antídoto' },
-  { name: 'Comigo-ninguém-pode', scientific: 'Dieffenbachia spp.', type: 'toxica', description: 'Planta ornamental comum. Seiva causa edema de glote, asfixia se ingerida. Suco na pele causa queimadura.', warning: 'Edema de glote pode ser fatal' },
-  { name: 'Trombeteira', scientific: 'Brugmansia suaveolens', type: 'toxica', description: 'Flor ornamental (trombeta). Todas as partes contêm alcaloides alucinógenos. Pode causar morte por depressão respiratória.', warning: 'Alucinógeno perigoso' },
-  { name: 'Mamão-de-Espinho', scientific: 'Solanum mauritianum', type: 'toxica', description: 'Frutos verdes tóxicos. Apenas frutos totalmente maduros (amarelos) podem ser consumidos em pequenas quantidades.', warning: 'Solanina — distúrbios gastrointestinais e neurológicos' },
+  {
+    name: 'Comigo-ninguém-pode',
+    scientific: 'Dieffenbachia spp.',
+    type: 'toxica',
+    description: 'Planta ornamental irritante/tóxica. Evite ingestão e contato com olhos e mucosas; mantenha longe de crianças e animais.',
+    warning: 'Em ingestão, reação importante ou dificuldade para respirar, procure atendimento e orientação toxicológica.',
+  },
+  {
+    name: 'Mamona',
+    scientific: 'Ricinus communis',
+    type: 'toxica',
+    description: 'As sementes são perigosas quando mastigadas/ingeridas. Não use esta planta como alimento ou preparo medicinal improvisado.',
+    warning: 'Não existe “quantidade segura” que o app possa determinar. Em suspeita de ingestão, procure atendimento.',
+  },
+  {
+    name: 'Trombeteira',
+    scientific: 'Brugmansia spp.',
+    type: 'toxica',
+    description: 'Planta com alcaloides tóxicos. Não ingerir nem preparar chás/extratos caseiros.',
+    warning: 'Pode causar intoxicação grave; procure atendimento em caso de exposição sintomática.',
+  },
+  {
+    name: 'Mandioca de variedade desconhecida',
+    scientific: 'Manihot esculenta',
+    type: 'toxica',
+    description: 'Variedades e processamento alteram o risco por compostos cianogênicos. Em emergência, não tente tornar raiz desconhecida segura usando instruções simplificadas do app.',
+    warning: 'Consuma apenas produto de origem conhecida e preparado por método alimentar adequado.',
+  },
 ];
 
-// ============= DICAS DE ECONOMIA DE BATERIA =============
 export const BATTERY_TIPS = [
-  { title: 'Modo avião + GPS', desc: 'Ative modo avião mas ligue só o GPS. Localização ainda funciona e economia é enorme.' },
-  { title: 'Brilho mínimo', desc: 'Reduza brilho a 30% ou menos. Tela é o maior consumidor de bateria.' },
-  { title: 'Fechar apps em background', desc: 'Apps como WhatsApp, Instagram, TikTok drenam bateria em background. Feche todos.' },
-  { title: 'Desligar vibração', desc: 'Motor de vibração consome mais que toque sonoro em many situations.' },
-  { title: 'Power bank de emergência', desc: 'Mantenha sempre um power bank carregado no kit de emergência.' },
-  { title: 'Carregador solar', desc: 'Pequenos painéis solares portáteis carregam celular em dia de sol.' },
-  { title: 'Carregar em pontos públicos', desc: 'Rodoviárias, aeroportos, bibliotecas, shoppings — sempre há tomadas.' },
-  { title: 'Modo economia de bateria', desc: 'Ative no celular — desliga processamentos em background.' },
+  { title: 'Modo economia de bateria', desc: 'Ative o modo de baixo consumo nativo do aparelho.' },
+  { title: 'Reduza brilho e tempo de tela', desc: 'Diminua o brilho e apague a tela quando não estiver consultando informações essenciais.' },
+  { title: 'Desative rádios que não estiver usando', desc: 'Se for seguro, desligue Wi‑Fi, Bluetooth ou dados móveis quando não forem necessários; reative periodicamente para verificar comunicação.' },
+  { title: 'Evite uso não essencial', desc: 'Jogos, streaming, vídeo e câmera prolongada consomem energia que pode ser necessária para comunicação.' },
+  { title: 'Power bank carregado', desc: 'Mantenha fonte de energia reserva testada e cabos compatíveis no kit.' },
+  { title: 'Proteja bateria de extremos', desc: 'Calor e frio extremos prejudicam desempenho; mantenha celular e power bank protegidos quando possível.' },
 ];
 
-// ============= CALCULADORA DE SOBREVIVÊNCIA =============
-// Regra: 3 minutos sem ar, 3 horas sem abrigo (extremos), 3 dias sem água, 3 semanas sem comida
+/**
+ * A “regra dos 3” é uma heurística popular, não uma previsão de tempo de
+ * sobrevivência. Mantemos o formato porque a UI legada renderiza quatro cartões,
+ * mas os valores são prioridades, não prazos fisiológicos.
+ */
 export const SURVIVAL_RULE_OF_3 = [
-  { label: 'Ar', time: '3 minutos', icon: 'wind', desc: 'Sem oxigênio (afogamento, soterramento)' },
-  { label: 'Abrigo', time: '3 horas', icon: 'home', desc: 'Em extremos de temperatura (hipotermia/insolação)' },
-  { label: 'Água', time: '3 dias', icon: 'droplet', desc: 'Sem hidratação — máximo crítico' },
-  { label: 'Comida', time: '3 semanas', icon: 'utensils', desc: 'Sem alimento — corpo entra em economia' },
+  { label: 'Respiração', time: 'IMEDIATO', icon: 'wind', desc: 'Via aérea e respiração são prioridade de emergência.' },
+  { label: 'Temperatura', time: 'URGENTE', icon: 'home', desc: 'Proteja de calor/frio e condições ambientais perigosas.' },
+  { label: 'Água', time: 'PRIORIDADE', icon: 'droplet', desc: 'Planeje água potável suficiente e preserve fontes seguras.' },
+  { label: 'Alimento', time: 'DEPOIS', icon: 'utensils', desc: 'Não assuma riscos de forrageamento antes de água, abrigo e resgate.' },
 ];
 
-// Cálculo de água por pessoa
-// 2L/dia para hidratação mínima
-// +1L/dia em clima quente
-// +0.5L/dia se caminhando
-export const WATER_PER_PERSON_PER_DAY_LITERS = 3;
+// Base da calculadora legada. Defesa Civil do Paraná recomenda 2 L de água por
+// pessoa/dia no kit pessoal. Necessidades individuais variam com clima, saúde,
+// idade e atividade; o total calculado pela UI é apenas planejamento aproximado.
+export const WATER_PER_PERSON_PER_DAY_LITERS = 2;
 
-// ============= INFORMAÇÕES DO MODO SEM SINAL — para mostrar no painel =============
 export interface SignalRecoveryMethod {
   id: string;
   title: string;
@@ -350,76 +370,69 @@ export interface SignalRecoveryMethod {
 export const SIGNAL_RECOVERY_METHODS: SignalRecoveryMethod[] = [
   {
     id: 'sms-basico',
-    title: 'SMS funciona com 1 barra',
-    description: 'SMS é protocolo 2G de baixa potência. Funciona onde dados 3G/4G não chegam.',
+    title: 'Tente SMS quando houver rede celular',
+    description: 'SMS pode funcionar em condições em que dados móveis estão degradados, mas não existe garantia de entrega, prazo ou tecnologia de rede disponível.',
     icon: 'message-square',
     availability: 'qualquer-celular',
     worksOffline: false,
     steps: [
-      'Ative modo avião, depois ative apenas sinal celular',
-      'Desative dados móveis (deixa só 2G/GSM)',
-      'Aguarde até ver 1 barra de sinal',
-      'Envie SMS curto (até 160 caracteres)',
-      'SMS pode chegar em 1-30 minutos se rede congestionada',
+      'Mantenha o celular ligado e procure cobertura de forma segura',
+      'Envie mensagem curta com nome, situação e coordenadas quando souber',
+      'Não considere a mensagem entregue até receber confirmação ou resposta',
+      'Preserve bateria entre tentativas',
     ],
   },
   {
     id: 'ligacao-emergencia',
-    title: 'Ligações 190/192/193 funcionam sem SIM',
-    description: 'Por lei internacional, qualquer celular conecta a emergências mesmo sem chip operadora.',
+    title: 'Números públicos de emergência',
+    description: 'No Brasil, chamadas para serviços públicos de emergência são gratuitas. A conclusão da chamada ainda depende de aparelho, rede/cobertura e condições técnicas disponíveis.',
     icon: 'phone',
     availability: 'qualquer-celular',
     worksOffline: false,
     steps: [
-      'Mesmo sem chip, disque 192 (SAMU), 190 (Polícia), 193 (Bombeiros)',
-      'Aparelho conecta à operadora disponível na área',
-      'Use quando seu chip não tem sinal mas outra operadora tem',
+      'Tente 192 para SAMU, 190 para Polícia Militar e 193 para Bombeiros conforme a situação',
+      'Se a chamada completar, descreva a emergência e informe localização/endereço ou coordenadas',
+      'Siga as orientações do atendente e não dependa da afirmação de que “sempre funciona sem SIM”',
     ],
   },
   {
-    id: 'wifi-publico',
-    title: 'WiFi público mais próximo',
-    description: 'WiFi Grátis Brasil tem 87 mil pontos em praças, escolas, rodoviárias.',
-    icon: 'wifi',
+    id: 'alerta-defesa-civil',
+    title: 'Defesa Civil Alerta',
+    description: 'Em celulares compatíveis conectados a redes 4G/5G, alertas severos/extremos podem chegar por Cell Broadcast sem cadastro prévio.',
+    icon: 'alert-triangle',
     availability: 'qualquer-celular',
     worksOffline: false,
     steps: [
-      'Ative WiFi no celular',
-      'Procure rede "WiFi Brasil" ou "Brasil WiFi"',
-      'Conecte — geralmente sem senha',
-      'Abra navegador — pode haver portal cativo',
-      'Aceite termos e use',
+      'Mantenha o sistema do celular atualizado',
+      'Ao receber alerta, leia a mensagem inteira e siga a instrução da Defesa Civil',
+      'Não dependa de Wi‑Fi público ou de uma lista estática de pontos para receber o Cell Broadcast',
     ],
   },
   {
     id: 'sos-satelite',
-    title: 'SOS via Satélite (iPhone 14+)',
-    description: 'Apple/Globalstar — sem chip, sem WiFi, sem nada. Só céu aberto.',
+    title: 'SOS via satélite — verifique país e aparelho',
+    description: 'Compatibilidade de hardware não significa disponibilidade regional. Na verificação de 2026-08-18, o SOS de Emergência via satélite da Apple não consta como disponível no Brasil.',
     icon: 'satellite',
     availability: 'celular-topo',
-    worksOffline: true,
+    worksOffline: false,
     steps: [
-      'Apenas iPhone 14 ou superior',
-      'Em área sem cobertura, tente ligar para emergência',
-      'Aparelho oferece "SOS via Satélite"',
-      'Siga interface guiada — aponte celular para satélite',
-      'Responda questionário de emergência',
-      'Conecta via Globalstar, mensagem chega em 15s-3min',
+      'Antes de viajar, consulte a página oficial do fabricante para disponibilidade no país/região de destino',
+      'Em iPhone compatível, confira Ajustes/Central de Controle > Satélite quando o recurso estiver disponível',
+      'Não planeje um resgate no Brasil presumindo que o SOS via satélite da Apple estará disponível',
+      'Use primeiro redes celular/Wi‑Fi e os números públicos de emergência quando disponíveis',
     ],
   },
   {
     id: 'mesh-bluetooth',
-    title: 'Mesh Bluetooth',
-    description: 'Apps como Bridgefy/Briar criam rede mesh via Bluetooth entre celulares próximos.',
+    title: 'Apps de comunicação local',
+    description: 'Alguns apps podem oferecer comunicação direta/local quando previamente instalados e configurados. Alcance, roteamento e entrega dependem do app, sistema, permissões, aparelhos próximos e ambiente.',
     icon: 'bluetooth',
     availability: 'apenas-com-app',
     worksOffline: true,
     steps: [
-      'Instale Bridgefy (offline-ready) antes de precisar',
-      'Ative Bluetooth e localização',
-      'Mensagens saltam de celular em celular',
-      'Alcance: 100m entre cada par',
-      'Em manifestações/desastres funciona sem internet',
+      'Instale e teste a ferramenta antes de uma emergência',
+      'Confirme quais permissões e modos realmente funcionam sem internet no seu aparelho',
+      'Não trate alcance nominal ou “mesh” como garantia de que uma mensagem chegará ao destino',
     ],
   },
 ];
