@@ -214,7 +214,7 @@ function offlineApiResponse(url) {
   const path = url.pathname;
   const now = new Date().toISOString();
 
-  if (path === '/api/network/status') return jsonResponse({ online: false, latency: null, externalIp: null, isp: null, country: null, geo: null, error: 'offline', offline: true, timestamp: now });
+  if (path === '/api/network/status') return jsonResponse({ online: false, latency: null, externalIp: null, isp: null, country: null, geo: null, error: 'offline', offline: true, dataQuality: 'unavailable', timestamp: now });
 
   if (path.startsWith('/api/coverage/towers')) {
     const lat = Number(url.searchParams.get('lat') || 0);
@@ -229,20 +229,104 @@ function offlineApiResponse(url) {
     });
   }
 
-  if (path.startsWith('/api/inmet/alerts')) return jsonResponse({ alerts: [], total: 0, cached: false, error: 'offline', offline: true, fetchedAt: now });
-  if (path.startsWith('/api/inmet/stations')) return jsonResponse({ online: false, fonte: 'offline — sem cache', total_estacoes: 0, proximas: [], atualizado_em: now, error: 'offline', offline: true });
+  if (path.startsWith('/api/inmet/alerts')) return jsonResponse({
+    online: false,
+    dataQuality: 'unavailable',
+    alerts: [],
+    total: 0,
+    cached: false,
+    error: 'offline',
+    message: 'Sem conexão e sem cópia local válida dos alertas INMET.',
+    fetchedAt: now,
+    source: 'INMET',
+    sourceUrl: 'https://alertas2.inmet.gov.br/',
+    note: 'Nenhum estado "sem alertas" é inferido sem consulta confirmada ou cache válido.',
+  });
+
+  if (path.startsWith('/api/inmet/stations')) return jsonResponse({
+    online: false,
+    catalogLive: false,
+    observationsLive: false,
+    dataQuality: 'unavailable',
+    fonte: 'INMET — offline sem cache',
+    sourceUrl: 'https://portal.inmet.gov.br/',
+    total_estacoes: 0,
+    proximas: [],
+    fetchedAt: now,
+    error: 'offline',
+    note: 'Sem catálogo ou observações INMET em cache para esta consulta.',
+  });
+
   if (path.startsWith('/api/cemaden')) return jsonResponse({ alerts: [], total: 0, error: 'offline', offline: true, dataQuality: 'unavailable', fetchedAt: now });
   if (path.startsWith('/api/queimadas')) return jsonResponse({ focos: [], total: 0, error: 'offline', offline: true, dataQuality: 'unavailable', fetchedAt: now });
   if (path.startsWith('/api/earthquakes')) return jsonResponse({ events: [], total: 0, error: 'offline', offline: true, dataQuality: 'unavailable', queriedAt: now });
-  if (path.startsWith('/api/eonet')) return jsonResponse({ events: [], total: 0, error: 'offline', offline: true, queriedAt: now });
+
+  if (path.startsWith('/api/eonet')) {
+    const lat = Number(url.searchParams.get('lat'));
+    const lon = Number(url.searchParams.get('lon'));
+    const radius = Number(url.searchParams.get('raio') || 1000);
+    const days = Number(url.searchParams.get('dias') || 30);
+    const status = url.searchParams.get('status') || 'open';
+    return jsonResponse({
+      offline: true,
+      dataQuality: 'unavailable',
+      source: 'NASA EONET v3',
+      sourceUrl: 'https://eonet.gsfc.nasa.gov/',
+      queriedAt: now,
+      center: Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon, radiusKm: radius } : null,
+      periodDays: days,
+      status,
+      total: 0,
+      events: [],
+      error: 'offline',
+      note: 'Sem conexão e sem cópia EONET válida em cache. Nenhum estado "sem eventos" é inferido.',
+    });
+  }
+
   if (path.startsWith('/api/cptec/forecast')) return jsonResponse({ city: null, days: [], total: 0, error: 'offline', offline: true, dataQuality: 'unavailable', queriedAt: now });
   if (path.startsWith('/api/cptec/satellite')) return jsonResponse({ online: false, dataQuality: 'official-portal', fonte: 'CPTEC/INPE', imagens: [], pagina_base: 'https://sigma.cptec.inpe.br/', aviso: 'Sem conexão para abrir o portal oficial.', offline: true });
   if (path.startsWith('/api/ana')) return jsonResponse({ online: false, dataQuality: 'reference-location-only', total: 0, estacoes: [], atualizado_em: null, error: 'offline', offline: true });
-  if (path.startsWith('/api/ibge')) return jsonResponse({ online: false, municipios: [], total: 0, atualizado_em: now, error: 'offline', offline: true });
-  if (path.startsWith('/api/defesacivil')) return jsonResponse({ online: false, dataQuality: 'official-channels-only', emergencia_numero: '199', alertas: [], contatos: [], error: 'offline', offline: true });
-  if (path.startsWith('/api/geocode')) return jsonResponse({ city: null, region: null, country: null, error: 'offline', offline: true });
 
-  return jsonResponse({ error: 'offline', cached: false, offline: true });
+  if (path.startsWith('/api/ibge')) {
+    const lat = Number(url.searchParams.get('lat'));
+    const lon = Number(url.searchParams.get('lon'));
+    return jsonResponse({
+      dataQuality: 'reference-only',
+      proximityAvailable: false,
+      deprecatedBehaviorRemoved: true,
+      requestedLocation: Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null,
+      total: 0,
+      municipios: [],
+      source: 'IBGE — API de Localidades / Localidades do Brasil',
+      sourceDocs: 'https://servicodados.ibge.gov.br/api/docs/localidades',
+      sourceProduct: 'https://www.ibge.gov.br/estatisticas/multidominio/ciencia-tecnologia-e-inovacao/27385-localidades.html',
+      checkedAt: now,
+      offline: true,
+      note: 'Proximidade municipal permanece indisponível; nenhum município próximo é inferido ou fabricado.',
+    });
+  }
+
+  if (path.startsWith('/api/defesacivil')) return jsonResponse({ online: false, dataQuality: 'official-channels-only', emergencia_numero: '199', alertas: [], contatos: [], error: 'offline', offline: true });
+
+  if (path.startsWith('/api/geocode')) {
+    const lat = Number(url.searchParams.get('lat'));
+    const lon = Number(url.searchParams.get('lon'));
+    return jsonResponse({
+      offline: true,
+      dataQuality: 'unavailable',
+      error: 'offline',
+      source: 'OpenStreetMap Nominatim',
+      sourceUrl: 'https://nominatim.openstreetmap.org/',
+      queriedAt: now,
+      lat: Number.isFinite(lat) ? lat : null,
+      lon: Number.isFinite(lon) ? lon : null,
+      city: null,
+      displayName: null,
+      note: 'Sem conexão e sem cópia de geocodificação reversa válida em cache.',
+    });
+  }
+
+  return jsonResponse({ error: 'offline', cached: false, offline: true, dataQuality: 'unavailable' });
 }
 
 async function cacheFirst(request, cacheName) {
@@ -409,8 +493,33 @@ self.addEventListener('fetch', (event) => {
 
   if (url.origin === self.location.origin && url.pathname.startsWith('/api/satellites')) {
     event.respondWith(networkFirst(request, SATELLITE_CACHE, () => {
-      if (url.pathname.includes('/passes')) return jsonResponse({ passes: [], total: 0, error: 'offline', offline: true, fallback: true });
-      return jsonResponse({ satellites: [], total: 0, visible: 0, error: 'offline', offline: true, fallback: true });
+      if (url.pathname.includes('/passes')) return jsonResponse({
+        passes: [],
+        total: 0,
+        error: 'offline',
+        offline: true,
+        fallback: true,
+        dataQuality: 'unavailable',
+        note: 'Sem conexão e sem previsão orbital válida em cache.',
+      });
+
+      const lat = Number(url.searchParams.get('lat'));
+      const lon = Number(url.searchParams.get('lon'));
+      return jsonResponse({
+        group: url.searchParams.get('group') || 'unknown',
+        observer: Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null,
+        timestamp: new Date().toISOString(),
+        source: 'CelesTrak indisponível — offline sem cache',
+        dataQuality: 'unavailable',
+        satellites: [],
+        total: 0,
+        visible: 0,
+        error: 'offline',
+        offline: true,
+        cached: false,
+        fallback: true,
+        note: 'Sem snapshot TLE válido em cache. Nenhuma posição orbital é inferida ou fabricada.',
+      });
     }));
     return;
   }
