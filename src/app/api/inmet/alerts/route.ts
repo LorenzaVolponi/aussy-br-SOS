@@ -1,17 +1,18 @@
 import { NextResponse } from 'next/server'
 
 /**
- * API que busca alertas meteorológicos do INMET (Instituto Nacional de Meteorologia).
- * Endpoint público oficial: https://apitempo.inmet.gov.br/alerta/v1/
+ * Alertas meteorológicos do INMET.
  *
- * Estratégia:
- * - Busca alertas ativos em todo o Brasil
- * - Se falhar (offline/timeout), retorna lista vazia com flag cached=false
- * - SW cacheia a resposta para uso offline
+ * Sem upstream confirmado, esta rota não produz "nenhum alerta ativo" como se
+ * fosse uma consulta bem-sucedida. Ela retorna 503/unavailable para permitir que
+ * o Service Worker preserve e sinalize a última resposta válida, quando existir.
  */
 
 export const dynamic = 'force-dynamic'
-export const revalidate = 1800 // 30 minutos
+export const revalidate = 1800
+
+const ALERTS_API = 'https://apitempo.inmet.gov.br/alerta/v1/'
+const ALERTS_PORTAL = 'https://alertas2.inmet.gov.br/'
 
 interface InmetAlert {
   aviso: string
@@ -25,63 +26,66 @@ interface InmetAlert {
   cor: string
 }
 
-export async function GET(request: Request) {
+export async function GET() {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 5000)
 
   try {
-    // INMET endpoint público — alertas ativos em todo Brasil
-    const res = await fetch('https://apitempo.inmet.gov.br/alerta/v1/', {
+    const res = await fetch(ALERTS_API, {
       signal: controller.signal,
       headers: {
-        'Accept': 'application/json',
+        Accept: 'application/json',
         'User-Agent': 'AussyOntech/1.0',
       },
       cache: 'no-store',
     })
 
-    clearTimeout(timeout)
+    if (!res.ok) throw new Error(`INMET retornou ${res.status}`)
 
-    if (!res.ok) {
-      throw new Error(`INMET retornou ${res.status}`)
-    }
+    const raw = await res.json()
+    if (!Array.isArray(raw)) throw new Error('INMET retornou alertas em formato inesperado')
 
-    const raw: any[] = await res.json()
-
-    // Normaliza resposta
-    const alerts = (raw || []).map((a): InmetAlert => ({
-      aviso: a.aviso || '',
-      evento: a.evento || 'Evento meteorológico',
-      severidade: a.severidade || '',
-      descricao: a.descricao || '',
-      inicio: a.inicio || '',
-      fim: a.fim || '',
-      uf: a.uf || '',
-      municipios: Array.isArray(a.municipios) ? a.municipios : [],
-      cor: a.cor || '#f59e0b',
+    const alerts = raw.map((entry: any): InmetAlert => ({
+      aviso: String(entry?.aviso || ''),
+      evento: String(entry?.evento || 'Evento meteorológico'),
+      severidade: String(entry?.severidade || ''),
+      descricao: String(entry?.descricao || ''),
+      inicio: String(entry?.inicio || ''),
+      fim: String(entry?.fim || ''),
+      uf: String(entry?.uf || ''),
+      municipios: Array.isArray(entry?.municipios) ? entry.municipios.map(String) : [],
+      cor: String(entry?.cor || '#f59e0b'),
     }))
 
     return NextResponse.json({
+      online: true,
+      dataQuality: 'live-alerts',
       alerts,
       total: alerts.length,
       cached: false,
       fetchedAt: new Date().toISOString(),
-      source: 'INMET apitempo.inmet.gov.br',
+      source: 'INMET',
+      sourceUrl: ALERTS_PORTAL,
+      note: 'Resposta obtida do endpoint de alertas do INMET nesta requisição.',
     })
-  } catch (e: any) {
-    clearTimeout(timeout)
-
-    // Offline ou erro: retorna estrutura vazia para cliente usar cache SW
+  } catch {
     return NextResponse.json(
       {
+        online: false,
+        dataQuality: 'unavailable',
         alerts: [],
         total: 0,
         cached: false,
-        error: 'offline',
-        message: 'Não foi possível buscar alertas do INMET. Verifique se há conexão.',
+        error: 'upstream-unavailable',
+        message: 'Não foi possível confirmar os alertas do INMET nesta requisição.',
         fetchedAt: new Date().toISOString(),
+        source: 'INMET',
+        sourceUrl: ALERTS_PORTAL,
+        note: 'Nenhum estado "sem alertas" é inferido quando a fonte falha. Se houver última resposta válida, o Service Worker pode devolvê-la como CACHE.',
       },
-      { status: 200 } // 200 mesmo offline para SW poder cachear resposta vazia
+      { status: 503 }
     )
+  } finally {
+    clearTimeout(timeout)
   }
 }
