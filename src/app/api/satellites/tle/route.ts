@@ -30,6 +30,13 @@ function groupUrl(group: string) {
     : null
 }
 
+function parseCoordinate(value: string | null, min: number, max: number): number | null {
+  if (value === null || value.trim() === '') return null
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) return null
+  return parsed
+}
+
 function parseTle(text: string): TleSatellite[] {
   const lines = text.trim().split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
   const sats: TleSatellite[] = []
@@ -122,13 +129,37 @@ function visibilityFromSubpoint(satLat: number, satLon: number, satAlt: number, 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const group = searchParams.get('group') || 'starlink'
-  const obsLat = parseFloat(searchParams.get('lat') || '-15.7801')
-  const obsLon = parseFloat(searchParams.get('lon') || '-47.9292')
+  const obsLat = parseCoordinate(searchParams.get('lat'), -90, 90)
+  const obsLon = parseCoordinate(searchParams.get('lon'), -180, 180)
   const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '50', 10), 1), 200)
   const url = groupUrl(group)
 
   if (!url) {
-    return NextResponse.json({ error: 'Grupo inválido', groups: Object.keys(CELESTRAK_GROUPS) }, { status: 400 })
+    return NextResponse.json({
+      error: 'invalid-group',
+      dataQuality: 'unavailable',
+      groups: Object.keys(CELESTRAK_GROUPS),
+      satellites: [],
+      total: 0,
+      visible: 0,
+    }, { status: 400 })
+  }
+
+  if (obsLat === null || obsLon === null) {
+    return NextResponse.json({
+      group,
+      observer: null,
+      timestamp: new Date().toISOString(),
+      source: 'CelesTrak / NORAD GP data',
+      dataQuality: 'unavailable',
+      total: 0,
+      visible: 0,
+      satellites: [],
+      cached: false,
+      fallback: false,
+      error: 'invalid-location',
+      note: 'Latitude e longitude válidas são obrigatórias para calcular a aproximação relativa ao observador. Nenhuma cidade padrão é assumida.',
+    }, { status: 400 })
   }
 
   try {
@@ -179,7 +210,7 @@ export async function GET(request: Request) {
       satellites: computed.slice(0, limit),
       cached: false,
       fallback: false,
-      warning: 'Posições/elevações são aproximações para visualização. Não usar para navegação, apontamento de antena ou decisão operacional.',
+      warning: 'Posições/elevações são aproximações para visualização. Não usar para navegação, apontamento de antena ou decisão operacional.',
     })
   } catch {
     return NextResponse.json({
