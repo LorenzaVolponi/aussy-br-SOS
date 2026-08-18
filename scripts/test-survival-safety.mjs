@@ -15,12 +15,11 @@ for (const required of [
   'imersão do corpo (pescoço para baixo) em água fresca a fria',
   'NÃO prepare “água com sal” caseira',
   '156.800 MHz',
-  'Transmissão não deve ser tratada como livre',
+  'TRANSMISSÃO não deve ser tratada como livre',
   'o SOS de Emergência via satélite da Apple não consta como disponível no Brasil',
   'WATER_PER_PERSON_PER_DAY_LITERS = 2',
   'Defesa Civil do Paraná recomenda 2 L de água por',
-  'dataQuality',
-].filter((fragment) => fragment !== 'dataQuality')) {
+]) {
   assert.equal(source.includes(required), true, `missing survival safety invariant: ${required}`)
 }
 
@@ -55,14 +54,26 @@ for (const forbidden of [
   assert.equal(source.includes(forbidden), false, `legacy/unsafe survival claim returned: ${forbidden}`)
 }
 
-const plantEntries = [...source.matchAll(/type: '(comestivel|medicinal|toxica)'/g)].map((m) => m[1])
+const plantsStart = source.indexOf('export const COMMON_PLANTS')
+const plantsEnd = source.indexOf('export const BATTERY_TIPS', plantsStart)
+assert.notEqual(plantsStart, -1, 'COMMON_PLANTS block missing')
+assert.notEqual(plantsEnd, -1, 'COMMON_PLANTS block terminator missing')
+const plantsBlock = source.slice(plantsStart, plantsEnd)
+const plantEntries = [...plantsBlock.matchAll(/type: '(comestivel|medicinal|toxica)'/g)].map((m) => m[1])
 assert.ok(plantEntries.length > 0, 'plant warning catalogue disappeared')
 assert.equal(plantEntries.includes('comestivel'), false, 'app must not classify plants as safe to eat in survival mode')
 assert.equal(plantEntries.includes('medicinal'), false, 'app must not prescribe medicinal plant use in survival mode')
+assert.ok(plantEntries.every((type) => type === 'toxica'), 'plant catalogue should only expose hazard references in survival mode')
 
-const radioEntries = [...source.matchAll(/freq: '([^']+)'[\s\S]*?license: '([^']+)'/g)]
-assert.ok(radioEntries.length >= 2, 'radio reference list unexpectedly empty')
-assert.equal(source.includes("freq: '156.800 MHz'"), true)
-assert.equal(source.includes("license: 'profissional'"), true)
+const radioStart = source.indexOf('export const EMERGENCY_RADIO_CHANNELS')
+const radioEnd = source.indexOf('// Morse', radioStart)
+assert.notEqual(radioStart, -1, 'radio block missing')
+assert.notEqual(radioEnd, -1, 'radio block terminator missing')
+const radioBlock = source.slice(radioStart, radioEnd)
+assert.equal(radioBlock.includes("freq: '156.800 MHz'"), true)
+assert.equal(radioBlock.includes("license: 'profissional'"), true)
+assert.equal(radioBlock.includes('145.000 MHz'), false)
+assert.equal(radioBlock.includes('146.520 MHz'), false)
+assert.equal(radioBlock.includes('446.000 MHz'), false)
 
 console.log('Survival safety gate OK — water, heat, food, plant, radio and satellite claims are conservative and source-bounded')
