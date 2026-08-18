@@ -35,6 +35,42 @@ function forbid(path, content, fragments) {
 
 await walk(root)
 
+const packageJson = await assertFileContains('package.json', [
+  '"test:sw": "node scripts/test-sw-runtime.mjs"',
+  '"verify:repo": "node scripts/verify-repo.mjs"',
+])
+
+const swRuntimeTest = await assertFileContains('scripts/test-sw-runtime.mjs', [
+  "fs.readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8')",
+  'cold boot navigation returns cached app shell',
+  'last-known-good survives degraded upstream',
+  'offline forecast without cache returns shape-safe fallback',
+  'offline emergency fallback retains national numbers',
+  'OSM tile is cached online and reused offline',
+  'PRECACHE_LOCATION rejects invalid coordinates',
+  'PRECACHE_LOCATION warms all location endpoints with real coordinates',
+  'CLEAR_CACHE explicitly clears all Aussy caches',
+])
+forbid('scripts/test-sw-runtime.mjs', swRuntimeTest, [
+  '/tmp/aussy-harness/sw.js',
+  'Math.random()',
+])
+
+const qualityWorkflow = await assertFileContains('.github/workflows/quality.yml', [
+  'Service Worker behavioral runtime tests',
+  'node scripts/test-sw-runtime.mjs',
+  'bun install',
+  'bun run verify:repo',
+  'bun run type-check',
+  'bun run lint',
+  'bun run build',
+])
+const swRuntimeStep = qualityWorkflow.indexOf('node scripts/test-sw-runtime.mjs')
+const installStep = qualityWorkflow.indexOf('bun install')
+if (swRuntimeStep < 0 || installStep < 0 || swRuntimeStep > installStep) {
+  failures.push('.github/workflows/quality.yml must run the zero-dependency Service Worker runtime gate before dependency installation')
+}
+
 const sw = await assertFileContains('public/sw.js', [
   "const CACHE_VERSION = 'aussy-v8'",
   "const OSM_TILES_CACHE = 'aussy-v2-osm-tiles'",
@@ -292,4 +328,4 @@ if (failures.length) {
   process.exit(1)
 }
 
-console.log('Aussy repository invariants OK — online/offline resilience, emergency UI, shell location, orbital trust and data-safety checks passed')
+console.log('Aussy repository invariants OK — online/offline resilience, runtime SW gate, emergency UI, shell location, orbital trust and data-safety checks passed')
