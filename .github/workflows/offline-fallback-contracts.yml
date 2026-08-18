@@ -1,0 +1,37 @@
+name: Offline Fallback Contract Gate
+
+on:
+  pull_request:
+    paths:
+      - 'public/sw.js'
+      - 'scripts/test-offline-fallback-contracts.mjs'
+      - '.github/workflows/offline-fallback-contracts.yml'
+      - 'src/app/api/inmet/**'
+      - 'src/app/api/eonet/**'
+      - 'src/app/api/ibge/**'
+      - 'src/app/api/geocode/**'
+      - 'src/app/api/satellites/**'
+  push:
+    branches: [main]
+    paths:
+      - 'public/sw.js'
+      - 'scripts/test-offline-fallback-contracts.mjs'
+      - '.github/workflows/offline-fallback-contracts.yml'
+      - 'src/app/api/inmet/**'
+      - 'src/app/api/eonet/**'
+      - 'src/app/api/ibge/**'
+      - 'src/app/api/geocode/**'
+      - 'src/app/api/satellites/**'
+
+permissions:
+  contents: read
+
+jobs:
+  fallback-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Execute offline fallback contracts
+        run: node scripts/test-offline-fallback-contracts.mjs
