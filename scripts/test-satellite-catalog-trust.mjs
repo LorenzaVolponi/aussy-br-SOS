@@ -24,8 +24,10 @@ for (const required of [
   'Resolução Anatel nº 748/2021',
   'satelites-autorizados',
   'sandbox-autorizacao-para-sistemas-satelitais-em-aplicacoes-direct-to-device',
+  "number: '188', name: 'CVV — Centro de Valorização da Vida'",
+  'Apoio emocional e prevenção do suicídio; ligação gratuita pelo 188',
 ]) {
-  assert.equal(data.includes(required), true, `missing satellite catalog invariant: ${required}`)
+  assert.equal(data.includes(required), true, `missing satellite/emergency catalog invariant: ${required}`)
 }
 
 const constellationBlock = data.slice(
@@ -65,8 +67,9 @@ for (const forbidden of [
   "status: 'testing',",
   "status: 'planned',",
   "status: 'limited',",
+  "name: 'Linha da Vida'",
 ]) {
-  assert.equal(data.includes(forbidden), false, `mutable satellite claim returned: ${forbidden}`)
+  assert.equal(data.includes(forbidden), false, `mutable/stale satellite or emergency claim returned: ${forbidden}`)
 }
 
 const emergencyStart = data.indexOf('export const BRAZIL_EMERGENCY_NUMBERS')
@@ -115,4 +118,4 @@ for (const forbidden of [
   assert.equal(contacts.includes(forbidden), false, `stale emergency capability claim returned: ${forbidden}`)
 }
 
-console.log('Satellite catalog trust gate OK — mutable commercial claims are neutralized and Brazil emergency/regulatory state is source-bounded')
+console.log('Satellite catalog trust gate OK — mutable claims neutralized and emergency code 188 uses official CVV label')
