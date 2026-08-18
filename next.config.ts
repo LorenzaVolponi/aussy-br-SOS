@@ -10,21 +10,21 @@ import type { NextConfig } from "next";
  * - Otimização de imagens com AVIF/WebP.
  */
 
-/** Domínios externos confiáveis usados pelas APIs brasileiras públicas. */
+/** Domínios externos confiáveis usados pelas APIs públicas do projeto. */
 const TRUSTED_API_ORIGINS = [
   'https://apitempo.inmet.gov.br',          // INMET (alertas + estações)
-  'https://servicodados.ibge.gov.br',        // IBGE (municípios, malhas)
+  'https://servicodados.ibge.gov.br',        // IBGE (referências administrativas)
   'https://www.snirh.gov.br',                // ANA / SNIRH (rios)
   'https://api.snirh.gov.br',                // ANA API v2
-  'http://satellite1.cptec.inpe.br',         // CPTEC/INPE (imagens GOES-16)
+  'http://satellite1.cptec.inpe.br',         // legado CPTEC/INPE — server-side only quando aplicável
   'https://gatewayapi.cnpt.em.brapa.gov.br', // CPTEC API gateway
   'https://gateway.brapa.cnpt.embrapa.br',   // Embrapa
   'https://earthquake.usgs.gov',             // USGS (sismos)
   'https://eonet.gsfc.nasa.gov',             // NASA EONET
   'https://api.openweathermap.org',           // OpenWeather (fallback clima)
-  'https://nominatim.openstreetmap.org',     // OSM Nominatim (geocode)
-  'https://tile.openstreetmap.org',          // OSM tiles (mapas)
-  'https://api.whatsapp.com',                // WhatsApp share
+  'https://nominatim.openstreetmap.org',      // OSM Nominatim (geocode)
+  'https://tile.openstreetmap.org',           // OSM tiles — hostname canônico exigido pela política
+  'https://api.whatsapp.com',                 // WhatsApp share
   'https://wa.me',                            // WhatsApp short links
 ];
 
@@ -68,7 +68,7 @@ const nextConfig: NextConfig = {
           { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
           // X-Content-Type-Options — evita MIME sniffing
           { key: 'X-Content-Type-Options', value: 'nosniff' },
-          // Referrer-Policy — controla vazamento de URL
+          // Mantém o origin como Referer em requisições cross-origin (necessário para identificar uso web de tiles OSM).
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           // Permissions-Policy — sensores e geolocalização só same-origin
           {
@@ -89,12 +89,12 @@ const nextConfig: NextConfig = {
                 : "script-src 'self' 'unsafe-inline'",
               // Styles: self + inline (Next.js styled-jsx)
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-              // Imagens: self + dados inline + APIs brasileiras + OSM tiles
-              `img-src 'self' data: blob: ${TRUSTED_API_ORIGINS.join(' ')} https://*.tile.openstreetmap.org https://basemaps.cartocdn.com`,
+              // Imagens: self + dados inline + origens explicitamente permitidas
+              `img-src 'self' data: blob: ${TRUSTED_API_ORIGINS.join(' ')} https://basemaps.cartocdn.com`,
               // Fonts
               "font-src 'self' data: https://fonts.gstatic.com",
-              // Conexões (fetch, XHR, WebSocket) — APIs brasileiras confiáveis
-              `connect-src 'self' ${TRUSTED_API_ORIGINS.join(' ')} https://*.tile.openstreetmap.org https://basemaps.cartocdn.com wss: ws:`,
+              // Conexões (fetch, XHR, WebSocket) — apenas origens explicitamente permitidas
+              `connect-src 'self' ${TRUSTED_API_ORIGINS.join(' ')} https://basemaps.cartocdn.com wss: ws:`,
               // Frames — apenas mesmo-origin (mapa embed etc)
               "frame-src 'self' https://www.openstreetmap.org",
               // Object/embed — bloqueado
