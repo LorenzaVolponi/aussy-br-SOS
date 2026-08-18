@@ -1,0 +1,41 @@
+name: Readiness Contract Gate
+
+on:
+  pull_request:
+    paths:
+      - 'src/lib/readiness-state.ts'
+      - 'src/app/api/readiness/route.ts'
+      - 'public/sw.js'
+      - 'src/proxy.ts'
+      - 'scripts/test-readiness-contract.mjs'
+      - 'scripts/run-safety-suite.mjs'
+      - '.github/workflows/safety-suite.yml'
+      - '.github/workflows/release-readiness.yml'
+      - '.github/workflows/readiness-contract.yml'
+      - 'bun.lock'
+  push:
+    branches: [main]
+    paths:
+      - 'src/lib/readiness-state.ts'
+      - 'src/app/api/readiness/route.ts'
+      - 'public/sw.js'
+      - 'src/proxy.ts'
+      - 'scripts/test-readiness-contract.mjs'
+      - 'scripts/run-safety-suite.mjs'
+      - '.github/workflows/safety-suite.yml'
+      - '.github/workflows/release-readiness.yml'
+      - '.github/workflows/readiness-contract.yml'
+      - 'bun.lock'
+
+permissions:
+  contents: read
+
+jobs:
+  readiness-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Validate readiness snapshot against repository blockers
+        run: node scripts/test-readiness-contract.mjs
