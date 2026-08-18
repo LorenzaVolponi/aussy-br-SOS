@@ -68,7 +68,7 @@ forbidFragments(swPath, sw, [
 
 const swTest = await read(swTestPath)
 requireFragments(swTestPath, swTest, [
-  'PRECACHE_LOCATION warms eight useful location endpoints with real coordinates',
+  'PRECACHE_LOCATION warms all location endpoints with real coordinates',
   'assert.equal(reply.total, 8)',
   'assert.equal(reply.succeeded, 8)',
   "assert.equal(await runtime.match('/api/ibge/municipios?lat=-25.42840&lon=-49.27330&raio=100&limit=15'), undefined)",
