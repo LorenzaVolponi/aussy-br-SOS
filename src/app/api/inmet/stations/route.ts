@@ -9,6 +9,7 @@ import { NextResponse } from 'next/server'
  * - catálogo oficial e observações têm estados separados;
  * - chuva_24h permanece null até existir cálculo real de janela de 24h;
  * - vento é mantido na unidade publicada pelo INMET para estações automáticas: m/s;
+ * - sentinelas de indisponibilidade do INMET (9999/Null/vazio) viram null;
  * - o Service Worker pode devolver a última resposta válida quando o upstream degrada.
  */
 
@@ -55,9 +56,12 @@ interface LatestReading {
 }
 
 function toNumber(value: unknown): number | null {
-  if (value === null || value === undefined || value === '') return null
-  const parsed = Number(String(value).replace(',', '.'))
-  return Number.isFinite(parsed) ? parsed : null
+  if (value === null || value === undefined) return null
+  const normalized = String(value).trim().replace(',', '.')
+  if (!normalized || normalized.toLowerCase() === 'null') return null
+  const parsed = Number(normalized)
+  if (!Number.isFinite(parsed) || parsed === 9999) return null
+  return parsed
 }
 
 function parseCoordinate(value: string | null, min: number, max: number): number | null {
@@ -150,8 +154,9 @@ export async function GET(request: Request) {
         const stationLon = toNumber(entry?.VL_LONGITUDE)
         if (stationLat === null || stationLon === null) return null
 
-        const status = String(entry?.CD_SITUACAO || '').toLowerCase()
-        if (status && !status.includes('operat')) return null
+        const status = String(entry?.CD_SITUACAO || '').trim().toLowerCase()
+        const isOperational = status === 'operante' || status === 'operativa'
+        if (!isOperational) return null
 
         return {
           codigo: String(entry?.CD_ESTACAO || '').trim(),
@@ -163,7 +168,7 @@ export async function GET(request: Request) {
         }
       })
       .filter((entry): entry is Estacao => Boolean(entry?.codigo))
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       {
         online: false,
@@ -199,7 +204,7 @@ export async function GET(request: Request) {
       if (previous?.atualizado && atualizado && previous.atualizado >= atualizado) continue
       if (previous && !atualizado) continue
 
-      leituras[codigo] = {
+      const leitura: LatestReading = {
         temperatura: toNumber(entry?.TEMP),
         umidade: toNumber(entry?.UMD),
         vento_dir: toNumber(entry?.VENT_DIR),
@@ -210,8 +215,22 @@ export async function GET(request: Request) {
         visibilidade: toNumber(entry?.VIS_IBR),
         atualizado,
       }
+
+      const hasMeasurement = [
+        leitura.temperatura,
+        leitura.umidade,
+        leitura.vento_dir,
+        leitura.vento_vel,
+        leitura.vento_raj,
+        leitura.pressao,
+        leitura.chuva_1h,
+        leitura.visibilidade,
+      ].some((value) => value !== null)
+
+      if (hasMeasurement || atualizado) leituras[codigo] = leitura
     }
-    observationsLive = true
+
+    observationsLive = Object.keys(leituras).length > 0
   } catch {
     observationsLive = false
   }
@@ -254,7 +273,7 @@ export async function GET(request: Request) {
     proximas,
     fetchedAt: new Date().toISOString(),
     note: observationsLive
-      ? 'Vento e rajada em m/s. Chuva representa o acumulado horário informado pela estação. Chuva em 24h não é inferida a partir de 1h.'
-      : 'Localizações vêm do catálogo oficial consultado nesta requisição, mas não há observações meteorológicas atuais nesta resposta.',
+      ? 'Vento e rajada em m/s. Chuva representa o acumulado horário informado pela estação. Chuva em 24h não é inferida a partir de 1h. Valores 9999/Null/vazios são tratados como indisponíveis.'
+      : 'Localizações vêm do catálogo oficial consultado nesta requisição, mas não há observações meteorológicas utilizáveis nesta resposta.',
   })
 }
