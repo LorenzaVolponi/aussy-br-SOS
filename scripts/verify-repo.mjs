@@ -115,6 +115,24 @@ await assertFileContains('src/app/layout.tsx', [
   "worker.postMessage({ type: 'PRECACHE_EMERGENCY' })",
 ])
 
+const page = await assertFileContains('src/app/page.tsx', [
+  'Aguardando localização válida',
+  'O Aussy não usa uma cidade padrão como se fosse sua localização',
+  "point.source === 'cached'",
+  'Acesso rápido + recursos preparados para offline',
+  'Aussy Ontech · SW v8',
+  'ERBs do módulo de cobertura são sintéticas',
+  'O Aussy não cria conectividade via satélite',
+])
+forbid('src/app/page.tsx', page, [
+  'const observerLat = point?.lat ?? -15.7801',
+  'const observerLon = point?.lon ?? -47.9292',
+  '100% offline',
+  'Este protótipo orquestra dados reais e públicos',
+  'SOS via satélite real só está disponível',
+  '>Nível de rios<',
+])
+
 const emergencyContacts = await assertFileContains('src/app/api/emergency/contacts/route.ts', [
   "verifiedAt: '2026-08-17'",
   "channel: 'automático'",
@@ -252,4 +270,4 @@ if (failures.length) {
   process.exit(1)
 }
 
-console.log('Aussy repository invariants OK — online/offline resilience, orbital trust and data-safety checks passed')
+console.log('Aussy repository invariants OK — online/offline resilience, shell location, orbital trust and data-safety checks passed')
