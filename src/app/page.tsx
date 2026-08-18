@@ -614,7 +614,7 @@ export default function Home() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <img src="/icon-192.svg" alt="" className="w-5 h-5" />
-                  <span className="font-mono-jet">Aussy Ontech · SW v8</span>
+                  <span className="font-mono-jet">Aussy Ontech · SW v9</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="font-mono-jet text-[10px]">CelesTrak · INMET · CEMADEN · CPTEC/INPE · ANA · IBGE · USGS · NASA EONET · Defesa Civil · OSM</span>
