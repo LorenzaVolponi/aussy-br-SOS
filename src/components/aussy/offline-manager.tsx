@@ -51,8 +51,7 @@ async function ensureServiceWorker() {
     })
   }
 
-  const ready = await navigator.serviceWorker.ready
-  return ready
+  return navigator.serviceWorker.ready
 }
 
 async function sendWorkerCommand(type: 'PRECACHE_SHELL' | 'PRECACHE_EMERGENCY'): Promise<WorkerReport> {
@@ -89,9 +88,9 @@ export function OfflineManager() {
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    const handler = (e: Event) => {
-      e.preventDefault()
-      setInstallPrompt(e)
+    const handler = (event: Event) => {
+      event.preventDefault()
+      setInstallPrompt(event)
     }
     window.addEventListener('beforeinstallprompt', handler)
 
@@ -118,40 +117,40 @@ export function OfflineManager() {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('caches' in window)) return
 
     try {
-      const reg = await navigator.serviceWorker.getRegistration('/')
+      const registration = await navigator.serviceWorker.getRegistration('/')
       const cacheNames = await caches.keys()
-      const aussyCaches = cacheNames.filter((k) => k.startsWith('aussy-'))
+      const aussyCaches = cacheNames.filter((name) => name.startsWith('aussy-'))
 
       let totalSize = 0
       const keys: string[] = []
       for (const name of aussyCaches) {
         const cache = await caches.open(name)
-        const reqs = await cache.keys()
-        for (const req of reqs) {
-          keys.push(req.url)
+        const requests = await cache.keys()
+        for (const request of requests) {
+          keys.push(request.url)
           try {
-            const res = await cache.match(req)
-            if (res) totalSize += (await res.blob()).size
+            const response = await cache.match(request)
+            if (response && response.type !== 'opaque') totalSize += (await response.blob()).size
           } catch {
             // Algumas respostas opacas não expõem tamanho; ainda contam como cacheadas.
           }
         }
       }
 
-      const hasRoot = keys.some((k) => new URL(k).pathname === '/')
-      const hasNextAsset = keys.some((k) => new URL(k).pathname.startsWith('/_next/static/'))
-      const hasEmergency = keys.some((k) => new URL(k).pathname.startsWith('/api/emergency/'))
+      const hasRoot = keys.some((key) => new URL(key).pathname === '/')
+      const hasNextAsset = keys.some((key) => new URL(key).pathname.startsWith('/_next/static/'))
+      const hasEmergency = keys.some((key) => new URL(key).pathname.startsWith('/api/emergency/'))
 
       setCacheStatus({
-        swRegistered: !!reg,
-        swControlling: !!navigator.serviceWorker.controller,
+        swRegistered: Boolean(registration),
+        swControlling: Boolean(navigator.serviceWorker.controller),
         cacheSize: totalSize,
         cacheKeys: keys,
         precached: hasEmergency,
         shellReady: hasRoot && hasNextAsset,
       })
-    } catch (e) {
-      console.error('Erro verificando cache:', e)
+    } catch (error) {
+      console.error('Erro verificando cache:', error)
     }
   }, [])
 
@@ -192,9 +191,9 @@ export function OfflineManager() {
           description: `${failed.length} recurso(s) não puderam ser atualizado(s). O cache anterior foi preservado.`,
         })
       }
-    } catch (e) {
+    } catch (error) {
       toast.error('Não foi possível preparar o modo offline', {
-        description: e instanceof Error ? e.message : 'Falha inesperada',
+        description: error instanceof Error ? error.message : 'Falha inesperada',
       })
     } finally {
       setPrecaching(false)
@@ -207,8 +206,8 @@ export function OfflineManager() {
     setPreparingAll(true)
     try {
       setPrepareStep('Ativando Service Worker...')
-      const reg = await ensureServiceWorker()
-      await reg.update().catch(() => undefined)
+      const registration = await ensureServiceWorker()
+      await registration.update().catch(() => undefined)
 
       setPrepareStep('Preparando app shell e arquivos do Next.js...')
       const shell = await sendWorkerCommand('PRECACHE_SHELL')
@@ -247,19 +246,19 @@ export function OfflineManager() {
           duration: 8000,
         })
       } else if (installPrompt) {
-        toast.success('Modo offline preparado!', {
-          description: 'App shell, dados críticos e última posição foram salvos. Instale o PWA para acesso rápido.',
+        toast.success('App e dados essenciais preparados!', {
+          description: 'App shell, dados críticos e última posição foram salvos. Tiles OSM não são pré-baixados; somente os visualizados podem permanecer em cache.',
           action: { label: 'Instalar', onClick: handleInstall },
           duration: 8000,
         })
       } else {
-        toast.success('Modo offline preparado!', {
-          description: 'App shell, dados críticos e última posição foram salvos.',
+        toast.success('App e dados essenciais preparados!', {
+          description: 'App shell, dados críticos e última posição foram salvos. Tiles OSM não são pré-baixados; somente os visualizados podem permanecer em cache.',
         })
       }
-    } catch (e) {
+    } catch (error) {
       toast.error('Falha preparando o modo offline', {
-        description: e instanceof Error ? e.message : 'Falha inesperada',
+        description: error instanceof Error ? error.message : 'Falha inesperada',
       })
     } finally {
       setPreparingAll(false)
@@ -270,23 +269,23 @@ export function OfflineManager() {
 
   const handleClearCache = async () => {
     if (typeof window === 'undefined' || !('caches' in window)) return
-    if (!window.confirm('Apagar todos os dados offline, incluindo mapas baixados?')) return
+    if (!window.confirm('Apagar todos os dados offline, incluindo tiles OSM já visualizados?')) return
 
     const keys = await caches.keys()
-    await Promise.all(keys.filter((k) => k.startsWith('aussy-')).map((k) => caches.delete(k)))
-    toast.success('Cache offline apagado', { description: 'Use "Preparar tudo agora" antes de ficar sem rede.' })
+    await Promise.all(keys.filter((key) => key.startsWith('aussy-')).map((key) => caches.delete(key)))
+    toast.success('Cache offline apagado', { description: 'Use "Preparar app agora" antes de ficar sem rede.' })
     window.setTimeout(() => void checkCacheStatus(), 300)
   }
 
   const handleUpdateSW = async () => {
     try {
-      const reg = await ensureServiceWorker()
-      await reg.update()
+      const registration = await ensureServiceWorker()
+      await registration.update()
       toast.info('Service Worker atualizado/verificado')
       void checkCacheStatus()
-    } catch (e) {
+    } catch (error) {
       toast.error('Falha ao atualizar Service Worker', {
-        description: e instanceof Error ? e.message : 'Falha inesperada',
+        description: error instanceof Error ? error.message : 'Falha inesperada',
       })
     }
   }
@@ -309,10 +308,10 @@ export function OfflineManager() {
         <div className="p-3 rounded-xl border border-signal/40 bg-gradient-to-br from-signal/15 to-signal/5">
           <div className="flex items-center gap-2 mb-2">
             <Zap className="h-4 w-4 text-signal" />
-            <span className="text-sm font-bold">Preparar tudo offline com 1 toque</span>
+            <span className="text-sm font-bold">Preparar app e dados essenciais para offline</span>
           </div>
           <p className="text-[11px] text-muted-foreground mb-3 leading-relaxed">
-            Salva o app shell, arquivos JS/CSS do Next.js, dados críticos e a última posição GPS conhecida. Recursos que dependem de dados ao vivo continuam identificados como cache/offline quando a rede cair.
+            Salva o app shell, arquivos JS/CSS do Next.js, dados críticos e a última posição GPS conhecida. Isso não baixa regiões do OpenStreetMap: no mapa, apenas tiles efetivamente visualizados podem permanecer em cache.
           </p>
 
           {preparingAll && (
@@ -326,7 +325,7 @@ export function OfflineManager() {
 
           <Button onClick={handlePrepareAll} disabled={preparingAll} className="w-full h-10" size="sm">
             <Zap className="h-4 w-4 mr-1.5" />
-            {preparingAll ? 'Preparando...' : 'Preparar tudo agora'}
+            {preparingAll ? 'Preparando...' : 'Preparar app agora'}
           </Button>
         </div>
 
@@ -419,7 +418,7 @@ export function OfflineManager() {
         <div className="text-[10px] text-muted-foreground leading-relaxed pt-2 border-t border-border/30">
           <p className="mb-1"><strong className="text-foreground">Como funciona offline:</strong></p>
           <p>
-            O Service Worker preserva o app shell, recursos estáticos e dados já preparados. Funções locais como SOS sonoro, números de emergência, guias, bússola e última posição conhecida continuam disponíveis; informações externas mostram cache ou indisponibilidade quando não houver cópia local.
+            O Service Worker preserva o app shell, recursos estáticos e dados já preparados. Funções locais como SOS sonoro, números de emergência, guias, bússola e última posição conhecida continuam disponíveis; informações externas mostram cache ou indisponibilidade quando não houver cópia local. No mapa OSM, somente tiles efetivamente visualizados podem permanecer armazenados; o Aussy não pré-baixa regiões no servidor padrão.
           </p>
         </div>
 
