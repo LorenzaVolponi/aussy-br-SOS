@@ -52,7 +52,7 @@ const iconMap: Record<string, any> = {
   bug: Bug,
 }
 
-export function EmergencySOS({ observerLat, observerLon }: { observerLat: number; observerLon: number }) {
+export function EmergencySOS(_location: { observerLat?: number; observerLon?: number }) {
   const [showKit, setShowKit] = useState(false)
   const [showFirstAid, setShowFirstAid] = useState<FirstAidGuide | null>(null)
   const [showPhrases, setShowPhrases] = useState(false)
@@ -60,7 +60,6 @@ export function EmergencySOS({ observerLat, observerLon }: { observerLat: number
   const [sosActive, setSosActive] = useState(false)
   const audioCtxRef = useRef<AudioContext | null>(null)
 
-  // Cleanup no unmount
   useEffect(() => {
     return () => {
       if (audioCtxRef.current) {
@@ -82,17 +81,14 @@ export function EmergencySOS({ observerLat, observerLon }: { observerLat: number
 
   const handleSOS = () => {
     setSosActive(true)
-    // Vibração real do celular se suportado
     if ('vibrate' in navigator) {
       navigator.vibrate([200, 100, 200, 100, 200, 100, 500])
     }
-    // Toca alarme sonoro (Web Audio API) — reutiliza o mesmo contexto
     try {
       if (!audioCtxRef.current) {
         audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
       }
       const ctx = audioCtxRef.current
-      // Resume caso esteja suspenso (autoplay policy)
       if (ctx.state === 'suspended') ctx.resume()
       const osc = ctx.createOscillator()
       const gain = ctx.createGain()
@@ -109,7 +105,6 @@ export function EmergencySOS({ observerLat, observerLon }: { observerLat: number
 
   return (
     <div className="space-y-4">
-      {/* Botões de ligação direta — PRIMEIRO na tela */}
       <Card className="glass-card-emergency relative overflow-hidden">
         <CardContent className="p-4">
           <div className="flex items-center justify-between mb-3">
@@ -118,7 +113,7 @@ export function EmergencySOS({ observerLat, observerLon }: { observerLat: number
               Ligar agora — toque no número
             </h3>
             <Badge variant="outline" className="text-[10px] bg-red-500/10 text-red-400 border-red-500/30">
-              funciona offline
+              atalho de discagem
             </Badge>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -139,10 +134,12 @@ export function EmergencySOS({ observerLat, observerLon }: { observerLat: number
               )
             })}
           </div>
+          <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
+            O atalho não depende de dados móveis, mas a chamada telefônica ainda exige serviço de voz/rede disponível no aparelho.
+          </p>
         </CardContent>
       </Card>
 
-      {/* Botão SOS gigante */}
       <Card className="glass-card-emergency relative overflow-hidden">
         <CardContent className="p-6">
           <div className="flex flex-col items-center gap-4">
@@ -207,7 +204,6 @@ export function EmergencySOS({ observerLat, observerLon }: { observerLat: number
         </CardContent>
       </Card>
 
-      {/* Números de emergência */}
       <Card className="glass-card">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
@@ -242,21 +238,31 @@ export function EmergencySOS({ observerLat, observerLon }: { observerLat: number
               <div className="flex items-center gap-2 mb-2">
                 <Globe className="h-3.5 w-3.5 text-signal" />
                 <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  SOS via Satélite
+                  SOS via satélite do aparelho
                 </span>
               </div>
               <div className="space-y-2 text-xs">
-                <div className="flex justify-between p-2 rounded-md bg-secondary/30">
-                  <span className="text-muted-foreground">Apple (iPhone 14+)</span>
-                  <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
-                    {contacts.satelliteSos.apple.coverage}
-                  </Badge>
+                <div className="p-2 rounded-md bg-secondary/30 border border-border/30">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-foreground">{contacts.satelliteSos.apple.device}</span>
+                    <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-400 border-amber-500/30">
+                      {contacts.satelliteSos.apple.coverage}
+                    </Badge>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">
+                    {contacts.satelliteSos.apple.note}
+                  </p>
                 </div>
-                <div className="flex justify-between p-2 rounded-md bg-secondary/30">
-                  <span className="text-muted-foreground">Android (Snapdragon Sat.)</span>
-                  <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-400 border-amber-500/30">
-                    {contacts.satelliteSos.android.coverage}
-                  </Badge>
+                <div className="p-2 rounded-md bg-secondary/30 border border-border/30">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-foreground">{contacts.satelliteSos.android.device}</span>
+                    <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-400 border-amber-500/30">
+                      {contacts.satelliteSos.android.coverage}
+                    </Badge>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">
+                    {contacts.satelliteSos.android.note}
+                  </p>
                 </div>
               </div>
               <p className="text-[10px] text-amber-400 mt-2 leading-relaxed">
@@ -270,18 +276,22 @@ export function EmergencySOS({ observerLat, observerLon }: { observerLat: number
               <div className="flex items-center gap-2 mb-1">
                 <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
                 <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Cell Broadcast Brasil
+                  {contacts.smsBroadcast.name || 'Defesa Civil Alerta'}
                 </span>
               </div>
               <p className="text-xs text-foreground/70 leading-relaxed">
-                Canal <span className="font-mono-jet text-signal">{contacts.smsBroadcast.channel}</span> ({contacts.smsBroadcast.name}) — alertas automáticos da Defesa Civil. Funciona sem app, mesmo com celular em silencioso. Ativo em: {contacts.smsBroadcast.carriers.join(', ')}.
+                {contacts.smsBroadcast.description}
               </p>
+              {contacts.smsBroadcast.smsRegistration && (
+                <div className="mt-2 rounded-md border border-border/30 bg-secondary/30 p-2 text-[10px] text-muted-foreground leading-relaxed">
+                  <strong className="text-foreground">SMS por CEP:</strong> {contacts.smsBroadcast.smsRegistration.instruction}
+                </div>
+              )}
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Primeiros socorros */}
       <Card className="glass-card">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
@@ -344,7 +354,6 @@ export function EmergencySOS({ observerLat, observerLon }: { observerLat: number
         </CardContent>
       </Card>
 
-      {/* Modal de guia de primeiros socorros */}
       <Sheet open={!!showFirstAid} onOpenChange={(v) => !v && setShowFirstAid(null)}>
         <SheetContent side="bottom" className="max-h-[90vh] overflow-y-auto">
           {showFirstAid && (
@@ -418,7 +427,6 @@ export function EmergencySOS({ observerLat, observerLon }: { observerLat: number
         </SheetContent>
       </Sheet>
 
-      {/* Modal do kit de emergência */}
       <Sheet open={showKit} onOpenChange={setShowKit}>
         <SheetContent side="bottom" className="max-h-[90vh] overflow-y-auto">
           <SheetHeader>
@@ -426,7 +434,7 @@ export function EmergencySOS({ observerLat, observerLon }: { observerLat: number
               <CheckCircle2 className="h-5 w-5 text-emerald-400" />
               Checklist — Kit de Emergência
             </SheetTitle>
-            <SheetDescription>Recomendado pela Defesa Civil e ANATEL</SheetDescription>
+            <SheetDescription>Checklist local de preparação. Adapte às orientações oficiais da sua região e ao seu contexto.</SheetDescription>
           </SheetHeader>
           <div className="mt-4 space-y-4">
             {EMERGENCY_KIT_CHECKLIST.map((cat) => (
@@ -448,7 +456,6 @@ export function EmergencySOS({ observerLat, observerLon }: { observerLat: number
         </SheetContent>
       </Sheet>
 
-      {/* Modal de frases multilíngues */}
       <Sheet open={showPhrases} onOpenChange={setShowPhrases}>
         <SheetContent side="bottom" className="max-h-[90vh] overflow-y-auto">
           <SheetHeader>

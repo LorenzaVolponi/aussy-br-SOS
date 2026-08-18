@@ -115,6 +115,24 @@ await assertFileContains('src/app/layout.tsx', [
   "worker.postMessage({ type: 'PRECACHE_EMERGENCY' })",
 ])
 
+const page = await assertFileContains('src/app/page.tsx', [
+  'Aguardando localização válida',
+  'O Aussy não usa uma cidade padrão como se fosse sua localização',
+  "point.source === 'cached'",
+  'Acesso rápido + recursos preparados para offline',
+  'Aussy Ontech · SW v8',
+  'ERBs do módulo de cobertura são sintéticas',
+  'O Aussy não cria conectividade via satélite',
+])
+forbid('src/app/page.tsx', page, [
+  'const observerLat = point?.lat ?? -15.7801',
+  'const observerLon = point?.lon ?? -47.9292',
+  '100% offline',
+  'Este protótipo orquestra dados reais e públicos',
+  'SOS via satélite real só está disponível',
+  '>Nível de rios<',
+])
+
 const emergencyContacts = await assertFileContains('src/app/api/emergency/contacts/route.ts', [
   "verifiedAt: '2026-08-17'",
   "channel: 'automático'",
@@ -129,12 +147,34 @@ forbid('src/app/api/emergency/contacts/route.ts', emergencyContacts, [
   'channel: 4370',
 ])
 
+const emergencyUi = await assertFileContains('src/components/aussy/emergency-sos.tsx', [
+  'atalho de discagem',
+  'a chamada telefônica ainda exige serviço de voz/rede disponível',
+  'SOS via satélite do aparelho',
+  'contacts.satelliteSos.apple.device',
+  'contacts.satelliteSos.android.device',
+  'contacts.smsBroadcast.description',
+  'SMS por CEP:',
+  'Checklist local de preparação',
+])
+forbid('src/components/aussy/emergency-sos.tsx', emergencyUi, [
+  'Android (Snapdragon Sat.)',
+  'Ativo em:',
+  'funciona offline',
+  'Recomendado pela Defesa Civil e ANATEL',
+])
+const emergencyLatUses = (emergencyUi.match(/observerLat/g) || []).length
+const emergencyLonUses = (emergencyUi.match(/observerLon/g) || []).length
+if (emergencyLatUses > 1 || emergencyLonUses > 1) {
+  failures.push('src/components/aussy/emergency-sos.tsx must not use location props operationally until a verified location-dependent SOS flow exists')
+}
+
 const cemaden = await assertFileContains('src/app/api/cemaden/alerts/route.ts', [
   'Nenhum alerta sintético foi gerado',
   "dataQuality: 'unavailable'",
   'painelalertas.cemaden.gov.br',
 ])
-forbid('src/app/api/cemaden/alerts/route.ts', cemaden, ['generateSimulatedAlerts', 'generateSimulated', 'sazonal'])
+forbid('src/app/api/cemaden/alerts/route.ts', cemaden, ['generateSimulatedAlerts', 'generateSimulated', 'alertasSazonais'])
 
 const forecast = await assertFileContains('src/app/api/cptec/forecast/route.ts', [
   'Nenhuma previsão sintética foi gerada',
@@ -199,6 +239,24 @@ const passes = await assertFileContains('src/app/api/satellites/passes/route.ts'
 ])
 forbid('src/app/api/satellites/passes/route.ts', passes, ['Math.random', 'slVisible', 'irVisible'])
 
+const orbitalUi = await assertFileContains('src/components/aussy/satellite-tracker.tsx', [
+  'Posição orbital aproximada',
+  'Estimativa, não rastreio operacional.',
+  'Acima do horizonte (est.)',
+  'Objetos no feed',
+  'Catálogo local de constelações',
+  'Referência local, não status em tempo real.',
+  'Confirmar no site oficial',
+])
+forbid('src/components/aussy/satellite-tracker.tsx', orbitalUi, [
+  'Rastreador Orbital em Tempo Real',
+  'Visíveis agora',
+  '{g.count}',
+  'Ativos / Total',
+  'Parceiros / Operadoras',
+  'Modelo de custo',
+])
+
 await assertFileContains('src/app/api/coverage/towers/route.ts', [
   "towers: 'synthetic'",
   "wifiPoints: 'sample'",
@@ -234,4 +292,4 @@ if (failures.length) {
   process.exit(1)
 }
 
-console.log('Aussy repository invariants OK — online/offline resilience and data-safety checks passed')
+console.log('Aussy repository invariants OK — online/offline resilience, emergency UI, shell location, orbital trust and data-safety checks passed')
