@@ -20,6 +20,9 @@ jobs:
       - name: Service Worker behavioral runtime tests
         run: node scripts/test-sw-runtime.mjs
 
+      - name: INMET data-integrity tests
+        run: node scripts/test-inmet-integrity.mjs
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
