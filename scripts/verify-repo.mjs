@@ -134,7 +134,7 @@ const cemaden = await assertFileContains('src/app/api/cemaden/alerts/route.ts', 
   "dataQuality: 'unavailable'",
   'painelalertas.cemaden.gov.br',
 ])
-forbid('src/app/api/cemaden/alerts/route.ts', cemaden, ['generateSimulatedAlerts', 'generateSimulated', 'sazonal'])
+forbid('src/app/api/cemaden/alerts/route.ts', cemaden, ['generateSimulatedAlerts', 'generateSimulated', 'alertasSazonais'])
 
 const forecast = await assertFileContains('src/app/api/cptec/forecast/route.ts', [
   'Nenhuma previsão sintética foi gerada',
@@ -199,6 +199,24 @@ const passes = await assertFileContains('src/app/api/satellites/passes/route.ts'
 ])
 forbid('src/app/api/satellites/passes/route.ts', passes, ['Math.random', 'slVisible', 'irVisible'])
 
+const orbitalUi = await assertFileContains('src/components/aussy/satellite-tracker.tsx', [
+  'Posição orbital aproximada',
+  'Estimativa, não rastreio operacional.',
+  'Acima do horizonte (est.)',
+  'Objetos no feed',
+  'Catálogo local de constelações',
+  'Referência local, não status em tempo real.',
+  'Confirmar no site oficial',
+])
+forbid('src/components/aussy/satellite-tracker.tsx', orbitalUi, [
+  'Rastreador Orbital em Tempo Real',
+  'Visíveis agora',
+  '{g.count}',
+  'Ativos / Total',
+  'Parceiros / Operadoras',
+  'Modelo de custo',
+])
+
 await assertFileContains('src/app/api/coverage/towers/route.ts', [
   "towers: 'synthetic'",
   "wifiPoints: 'sample'",
@@ -234,4 +252,4 @@ if (failures.length) {
   process.exit(1)
 }
 
-console.log('Aussy repository invariants OK — online/offline resilience and data-safety checks passed')
+console.log('Aussy repository invariants OK — online/offline resilience, orbital trust and data-safety checks passed')
