@@ -202,7 +202,7 @@ export const BRAZIL_EMERGENCY_NUMBERS = [
   { number: '198', name: 'Polícia Rodoviária Estadual', description: 'Serviço rodoviário estadual', icon: 'shield' },
   { number: '180', name: 'Central de Atendimento à Mulher', description: 'Serviço de utilidade pública', icon: 'phone' },
   { number: '100', name: 'Direitos Humanos', description: 'Serviço de utilidade pública', icon: 'scale' },
-  { number: '188', name: 'Linha da Vida', description: 'Código 188 conforme designação nacional da Anatel', icon: 'heart' },
+  { number: '188', name: 'CVV — Centro de Valorização da Vida', description: 'Apoio emocional e prevenção do suicídio; ligação gratuita pelo 188', icon: 'heart' },
 ];
 
 export const BRAZILIAN_OPERATORS = [
