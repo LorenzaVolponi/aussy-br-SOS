@@ -23,6 +23,9 @@ jobs:
       - name: INMET data-integrity tests
         run: node scripts/test-inmet-integrity.mjs
 
+      - name: API trust tests
+        run: node scripts/test-api-trust.mjs
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
