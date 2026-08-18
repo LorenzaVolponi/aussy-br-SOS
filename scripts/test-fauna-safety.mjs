@@ -66,7 +66,7 @@ assert.equal(new Set(ids).size, 18, 'fauna ids must be unique')
 
 const protocolBlock = data.slice(data.indexOf('export const PROTOCOLOS_FAUNA'), data.indexOf('export const CATEGORIAS_FAUNA'))
 const atendimentoCount = (protocolBlock.match(/\n    atendimento:/g) || []).length
-const verifiedCount = (protocolBlock.match(/\n    verifiedAt: VERIFIED_AT/g) || []).length
+const verifiedCount = (protocolBlock.match(/verifiedAt: VERIFIED_AT/g) || []).length
 const sourceLabelCount = (protocolBlock.match(/sourceLabel:/g) || []).length
 const sourceUrlsCount = (protocolBlock.match(/sourceUrls:/g) || []).length
 assert.equal(atendimentoCount, 18, `atendimento count ${atendimentoCount} != 18`)
