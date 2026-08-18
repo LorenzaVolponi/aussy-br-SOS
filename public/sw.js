@@ -210,6 +210,14 @@ function jsonResponse(payload, status = 503) {
   });
 }
 
+function fallbackCoordinate(url, name, min, max) {
+  const raw = url.searchParams.get(name);
+  if (raw === null || raw.trim() === '') return null;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) return null;
+  return parsed;
+}
+
 function offlineApiResponse(url) {
   const path = url.pathname;
   const now = new Date().toISOString();
@@ -217,11 +225,11 @@ function offlineApiResponse(url) {
   if (path === '/api/network/status') return jsonResponse({ online: false, latency: null, externalIp: null, isp: null, country: null, geo: null, error: 'offline', offline: true, dataQuality: 'unavailable', timestamp: now });
 
   if (path.startsWith('/api/coverage/towers')) {
-    const lat = Number(url.searchParams.get('lat') || 0);
-    const lon = Number(url.searchParams.get('lon') || 0);
+    const lat = fallbackCoordinate(url, 'lat', -90, 90);
+    const lon = fallbackCoordinate(url, 'lon', -180, 180);
     const radius = Number(url.searchParams.get('radius') || 30);
     return jsonResponse({
-      observer: { lat, lon, radius }, timestamp: now,
+      observer: lat !== null && lon !== null ? { lat, lon, radius } : null, timestamp: now,
       source: 'offline — sem cópia local para esta consulta',
       dataQuality: { towers: 'unavailable', wifiPoints: 'unavailable' },
       wifiPoints: [], wifiTotal: 0, towers: [], towersTotal: 0, byOperator: [],
@@ -262,8 +270,8 @@ function offlineApiResponse(url) {
   if (path.startsWith('/api/earthquakes')) return jsonResponse({ events: [], total: 0, error: 'offline', offline: true, dataQuality: 'unavailable', queriedAt: now });
 
   if (path.startsWith('/api/eonet')) {
-    const lat = Number(url.searchParams.get('lat'));
-    const lon = Number(url.searchParams.get('lon'));
+    const lat = fallbackCoordinate(url, 'lat', -90, 90);
+    const lon = fallbackCoordinate(url, 'lon', -180, 180);
     const radius = Number(url.searchParams.get('raio') || 1000);
     const days = Number(url.searchParams.get('dias') || 30);
     const status = url.searchParams.get('status') || 'open';
@@ -273,7 +281,7 @@ function offlineApiResponse(url) {
       source: 'NASA EONET v3',
       sourceUrl: 'https://eonet.gsfc.nasa.gov/',
       queriedAt: now,
-      center: Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon, radiusKm: radius } : null,
+      center: lat !== null && lon !== null ? { lat, lon, radiusKm: radius } : null,
       periodDays: days,
       status,
       total: 0,
@@ -288,13 +296,13 @@ function offlineApiResponse(url) {
   if (path.startsWith('/api/ana')) return jsonResponse({ online: false, dataQuality: 'reference-location-only', total: 0, estacoes: [], atualizado_em: null, error: 'offline', offline: true });
 
   if (path.startsWith('/api/ibge')) {
-    const lat = Number(url.searchParams.get('lat'));
-    const lon = Number(url.searchParams.get('lon'));
+    const lat = fallbackCoordinate(url, 'lat', -90, 90);
+    const lon = fallbackCoordinate(url, 'lon', -180, 180);
     return jsonResponse({
       dataQuality: 'reference-only',
       proximityAvailable: false,
       deprecatedBehaviorRemoved: true,
-      requestedLocation: Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null,
+      requestedLocation: lat !== null && lon !== null ? { lat, lon } : null,
       total: 0,
       municipios: [],
       source: 'IBGE — API de Localidades / Localidades do Brasil',
@@ -309,8 +317,8 @@ function offlineApiResponse(url) {
   if (path.startsWith('/api/defesacivil')) return jsonResponse({ online: false, dataQuality: 'official-channels-only', emergencia_numero: '199', alertas: [], contatos: [], error: 'offline', offline: true });
 
   if (path.startsWith('/api/geocode')) {
-    const lat = Number(url.searchParams.get('lat'));
-    const lon = Number(url.searchParams.get('lon'));
+    const lat = fallbackCoordinate(url, 'lat', -90, 90);
+    const lon = fallbackCoordinate(url, 'lon', -180, 180);
     return jsonResponse({
       offline: true,
       dataQuality: 'unavailable',
@@ -318,8 +326,8 @@ function offlineApiResponse(url) {
       source: 'OpenStreetMap Nominatim',
       sourceUrl: 'https://nominatim.openstreetmap.org/',
       queriedAt: now,
-      lat: Number.isFinite(lat) ? lat : null,
-      lon: Number.isFinite(lon) ? lon : null,
+      lat,
+      lon,
       city: null,
       displayName: null,
       note: 'Sem conexão e sem cópia de geocodificação reversa válida em cache.',
@@ -503,11 +511,11 @@ self.addEventListener('fetch', (event) => {
         note: 'Sem conexão e sem previsão orbital válida em cache.',
       });
 
-      const lat = Number(url.searchParams.get('lat'));
-      const lon = Number(url.searchParams.get('lon'));
+      const lat = fallbackCoordinate(url, 'lat', -90, 90);
+      const lon = fallbackCoordinate(url, 'lon', -180, 180);
       return jsonResponse({
         group: url.searchParams.get('group') || 'unknown',
-        observer: Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null,
+        observer: lat !== null && lon !== null ? { lat, lon } : null,
         timestamp: new Date().toISOString(),
         source: 'CelesTrak indisponível — offline sem cache',
         dataQuality: 'unavailable',
