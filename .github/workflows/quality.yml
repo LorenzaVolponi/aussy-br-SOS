@@ -29,6 +29,9 @@ jobs:
       - name: OSM tile policy tests
         run: node scripts/test-osm-policy.mjs
 
+      - name: Client surface tests
+        run: node scripts/test-client-surface.mjs
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
