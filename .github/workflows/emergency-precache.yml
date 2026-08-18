@@ -1,0 +1,27 @@
+name: Emergency Precache Gate
+
+on:
+  pull_request:
+    paths:
+      - 'public/sw.js'
+      - 'scripts/test-emergency-precache.mjs'
+      - '.github/workflows/emergency-precache.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'public/sw.js'
+      - 'scripts/test-emergency-precache.mjs'
+      - '.github/workflows/emergency-precache.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  emergency-precache:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Validate emergency precache scope
+        run: node scripts/test-emergency-precache.mjs
