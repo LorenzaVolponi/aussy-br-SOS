@@ -19,10 +19,20 @@ function forbidFragments(path, content, fragments) {
   }
 }
 
+const packagePath = 'package.json'
 const pagePath = 'src/app/page.tsx'
 const quickSharePath = 'src/components/aussy/quick-share.tsx'
+const qrPath = 'src/components/aussy/qr-location.tsx'
 const geoPath = 'src/hooks/use-geolocation.ts'
+const orientationPath = 'src/hooks/use-orientation.ts'
 const coveragePath = 'src/app/api/coverage/towers/route.ts'
+
+const packageJson = await read(packagePath)
+requireFragments(packagePath, packageJson, [
+  '"qrcode": "^1.5.4"',
+  '"type-check": "tsc --noEmit"',
+  '"build": "next build"',
+])
 
 const page = await read(pagePath)
 requireFragments(pagePath, page, [
@@ -55,11 +65,30 @@ requireFragments(quickSharePath, quickShare, [
   "'última posição conhecida'",
   'Esta é a última posição conhecida, não uma leitura GPS atual',
   "window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener,noreferrer')",
+  'bottom-[calc(env(safe-area-inset-bottom)+4.75rem)]',
+  'landscape:bottom-5 md:bottom-5',
 ])
 forbidFragments(quickSharePath, quickShare, [
   "import { Share2, MessageCircle, Copy, X, MapPin, Phone",
   "point.source === 'ip' ? 'IP aprox.' : 'manual'",
   '100% funcional offline',
+])
+
+const qr = await read(qrPath)
+requireFragments(qrPath, qr, [
+  "import QRCode from 'qrcode'",
+  'const nextPoint = await detect(true)',
+  'if (!nextPoint)',
+  "currentPoint?.source === 'cached'",
+  'Última posição conhecida. Atualize o GPS sempre que possível',
+  'Abrir o link do Google Maps pode exigir internet',
+  "error instanceof DOMException && error.name === 'AbortError'",
+])
+forbidFragments(qrPath, qr, [
+  'Download, X, Share2',
+  'abre o Maps — funciona sem internet',
+  "currentPoint.source === 'ip' ? 'IP' : 'MANUAL'",
+  'await detect(true)\n    } catch',
 ])
 
 const geo = await read(geoPath)
@@ -69,9 +98,17 @@ requireFragments(geoPath, geo, [
   'A última posição conhecida ainda é preferível a um default arbitrário',
   "throw gpsError || new Error('Não foi possível determinar a localização')",
 ])
-forbidFragments(geoPath, geo, [
-  '-15.7801',
-  '-47.9292',
+forbidFragments(geoPath, geo, ['-15.7801', '-47.9292'])
+
+const orientation = await read(orientationPath)
+requireFragments(orientationPath, orientation, [
+  "typeof ResizeObserver !== 'undefined'",
+  "window.addEventListener('orientationchange', handleOrientationChange)",
+  "window.removeEventListener('orientationchange', handleOrientationChange)",
+  'if (orientationTimer) clearTimeout(orientationTimer)',
+])
+forbidFragments(orientationPath, orientation, [
+  "window.addEventListener('orientationchange', () =>",
 ])
 
 const coverage = await read(coveragePath)
@@ -92,4 +129,4 @@ if (failures.length) {
   process.exit(1)
 }
 
-console.log('V1 release surface OK — home, SOS location provenance, geolocation and coverage contracts are protected')
+console.log('V1 release surface OK — home, SOS/QR provenance, mobile layout, orientation, geolocation and coverage contracts are protected')
