@@ -23,6 +23,7 @@ const eonetRoutePath = 'src/app/api/eonet/route.ts'
 const eonetUiPath = 'src/components/aussy/eonet-card.tsx'
 const geocodePath = 'src/app/api/geocode/route.ts'
 const ibgePath = 'src/app/api/ibge/municipios/route.ts'
+const coveragePath = 'src/app/api/coverage/towers/route.ts'
 const healthPath = 'src/app/api/route.ts'
 
 const eonetRoute = await read(eonetRoutePath)
@@ -96,6 +97,24 @@ forbidFragments(ibgePath, ibge, [
   "url.searchParams.get('lon') || '-47.9292'",
 ])
 
+const coverage = await read(coveragePath)
+requireFragments(coveragePath, coverage, [
+  "error: 'invalid-location'",
+  'Nenhuma cidade padrão é assumida',
+  "towers: 'unavailable'",
+  'ERBs oficiais não integradas nesta build',
+  'O Aussy não fabrica posições de ERB',
+  'parseCoordinate',
+  'parseRadius',
+])
+forbidFragments(coveragePath, coverage, [
+  "searchParams.get('lat') || '-15.7801'",
+  "searchParams.get('lon') || '-47.9292'",
+  'Math.random()',
+  'sim-erb-',
+  "towers: 'synthetic'",
+])
+
 const health = await read(healthPath)
 requireFragments(healthPath, health, [
   "status: 'app-api-reachable'",
@@ -112,4 +131,4 @@ if (failures.length) {
   process.exit(1)
 }
 
-console.log('API trust gate OK — EONET, geocode, IBGE reference semantics and app health are protected')
+console.log('API trust gate OK — EONET, geocode, IBGE, coverage and app health trust semantics are protected')
