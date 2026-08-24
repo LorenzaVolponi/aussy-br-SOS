@@ -1,0 +1,76 @@
+name: Vercel production fallback
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  statuses: read
+
+concurrency:
+  group: vercel-production-fallback
+  cancel-in-progress: true
+
+jobs:
+  deploy-fallback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Wait for native Vercel integration
+        if: github.event_name == 'push'
+        run: sleep 90
+
+      - name: Inspect Vercel status
+        id: vercel
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const sha = context.sha;
+            const combined = await github.rest.repos.getCombinedStatusForRef({ owner, repo, ref: sha });
+            const statuses = combined.data.statuses
+              .filter((s) => s.context.toLowerCase().includes('vercel'))
+              .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+            const latest = statuses[0];
+            if (!latest) {
+              core.setOutput('fallback', 'true');
+              core.setOutput('state', 'missing');
+              return;
+            }
+            core.info(`Vercel status: ${latest.state} -> ${latest.target_url || ''}`);
+            core.setOutput('state', latest.state);
+            core.setOutput('target', latest.target_url || '');
+            core.setOutput('fallback', latest.state === 'success' ? 'false' : 'true');
+
+      - name: Native deployment already healthy
+        if: steps.vercel.outputs.fallback == 'false'
+        run: echo "Native Vercel deployment succeeded; fallback not needed."
+
+      - name: Run safe production fallback
+        if: steps.vercel.outputs.fallback == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: bash scripts/vercel-safe-deploy.sh
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Aussy Vercel deployment"
+            echo
+            echo "Native status: \`${{ steps.vercel.outputs.state || 'unknown' }}\`"
+            echo
+            if [ "${{ steps.vercel.outputs.fallback }}" = "true" ]; then
+              echo "Fallback path was evaluated."
+              echo "If Vercel secrets are configured, GitHub attempted production deployment via CLI."
+            else
+              echo "Native Git integration completed successfully."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
