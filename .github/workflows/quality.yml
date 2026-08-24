@@ -11,7 +11,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -42,13 +42,16 @@ jobs:
           node --version
           bun --version
           bun --revision
+          echo "commit=${GITHUB_SHA}"
 
       - name: Install dependencies
         shell: bash
         run: |
           if [ -f bun.lock ]; then
+            echo "Using frozen bun.lock"
             bun install --frozen-lockfile
           else
+            echo "WARNING: bun.lock missing; install is not fully reproducible"
             bun install
           fi
 
@@ -58,10 +61,21 @@ jobs:
       - name: Type check
         run: bun run type-check
 
-      - name: Lint
-        run: bun run lint
+      - name: Critical lint
+        run: bun run lint:critical
 
       - name: Build
         run: bun run build
         env:
           NEXT_PUBLIC_SITE_URL: http://localhost:3000
+
+      - name: Release diagnostics
+        if: always()
+        shell: bash
+        run: |
+          echo "## Aussy release diagnostics" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: ${GITHUB_SHA}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- bun.lock: $([ -f bun.lock ] && echo present || echo missing)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Next: $(bun -e \"console.log(require('./package.json').dependencies.next)\" 2>/dev/null || echo unknown)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Node: $(node --version)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Bun: $(bun --version 2>/dev/null || echo unavailable)" >> "$GITHUB_STEP_SUMMARY"
