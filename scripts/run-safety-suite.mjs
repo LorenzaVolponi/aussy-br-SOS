@@ -4,6 +4,7 @@ import process from 'node:process'
 
 const gates = [
   ['Repository invariants', 'scripts/verify-repo.mjs'],
+  ['V1 release surface', 'scripts/test-v1-release-surface.mjs'],
   ['Service Worker runtime', 'scripts/test-sw-runtime.mjs'],
   ['Service Worker safety epoch', 'scripts/test-sw-safety-epoch.mjs'],
   ['INMET integrity', 'scripts/test-inmet-integrity.mjs'],
