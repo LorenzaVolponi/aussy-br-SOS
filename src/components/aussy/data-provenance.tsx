@@ -1,9 +1,9 @@
 'use client'
 
 import { Badge } from '@/components/ui/badge'
-import { Database, RadioTower, Clock3, FlaskConical, Archive, CircleHelp } from 'lucide-react'
+import { Database, RadioTower, Clock3, FlaskConical, Archive, CircleHelp, Ban } from 'lucide-react'
 
-export type DataQuality = 'live' | 'cached' | 'sample' | 'synthetic' | 'static' | 'unknown'
+export type DataQuality = 'live' | 'cached' | 'sample' | 'synthetic' | 'static' | 'unavailable' | 'unknown'
 
 interface DataProvenanceProps {
   quality: DataQuality
@@ -38,6 +38,11 @@ const QUALITY_META: Record<DataQuality, { label: string; className: string; icon
     label: 'BASE LOCAL',
     className: 'border-slate-500/40 bg-slate-500/10 text-slate-300',
     icon: Database,
+  },
+  unavailable: {
+    label: 'INDISPONÍVEL',
+    className: 'border-orange-500/40 bg-orange-500/10 text-orange-300',
+    icon: Ban,
   },
   unknown: {
     label: 'ORIGEM NÃO VERIFICADA',
