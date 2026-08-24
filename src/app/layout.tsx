@@ -7,14 +7,38 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { OfflineChunkWarmer } from "@/components/aussy/offline-chunk-warmer";
 import { ClientObservability } from "@/components/aussy/client-observability";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+const DEFAULT_SITE_URL =
+  process.env.NODE_ENV === "development"
+    ? "http://localhost:3000"
+    : "https://aussy-br-sos.vercel.app";
+
+function resolveMetadataBase(): URL {
+  const raw = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (!raw) return new URL(DEFAULT_SITE_URL);
+
+  const candidate = /^https?:\/\//i.test(raw)
+    ? raw
+    : /^[a-z0-9.-]+(?::\d+)?$/i.test(raw)
+      ? `https://${raw}`
+      : DEFAULT_SITE_URL;
+
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return new URL(DEFAULT_SITE_URL);
+    }
+    return parsed;
+  } catch {
+    return new URL(DEFAULT_SITE_URL);
+  }
+}
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 const jetMono = JetBrains_Mono({ variable: "--font-jet-mono", subsets: ["latin"], weight: ["400", "600", "800"] });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
+  metadataBase: resolveMetadataBase(),
   title: "Aussy Ontech — Operadora de Resiliência Orbital",
   description: "Plataforma offline-first de resiliência para o Brasil: SOS, guias locais, mapas preparados para offline, geolocalização, clima e alertas com cache, Defesa Civil e dados orbitais com transparência de origem.",
   keywords: ["satélite", "D2C", "Direct-to-Cell", "emergência", "SOS", "offline", "internet rural", "Brasil", "ANATEL", "INMET", "CEMADEN", "CPTEC", "INPE", "ANA", "IBGE", "Defesa Civil", "SEDEC", "WiFi grátis", "Aussy Ontech"],
