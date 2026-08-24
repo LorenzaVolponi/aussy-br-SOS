@@ -6,7 +6,7 @@
     "silent": false
   },
   "buildCommand": "bun run build",
-  "installCommand": "bun install",
+  "installCommand": "if [ -f bun.lock ]; then bun install --frozen-lockfile; else bun install; fi",
   "headers": [
     {
       "source": "/sw.js",
