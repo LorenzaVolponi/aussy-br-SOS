@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Share2, MessageCircle, Copy, X, MapPin, Phone, Send, Loader2, Check } from 'lucide-react'
+import { Share2, MessageCircle, Copy, MapPin, Send, Loader2, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -26,7 +26,7 @@ interface QuickShareProps {
  * - Gera texto pronto para SMS/WhatsApp
  * - Usa Web Share API quando disponível (abre menu nativo)
  * - Copia para clipboard como fallback
- * - 100% funcional offline depois que GPS é adquirido
+ * - Recursos locais continuam disponíveis offline; entrega por apps externos depende da conectividade do aparelho
  */
 export function QuickShare({ hideButton = false, initialPoint = null }: QuickShareProps) {
   const [open, setOpen] = useState(false)
@@ -35,9 +35,8 @@ export function QuickShare({ hideButton = false, initialPoint = null }: QuickSha
   const [copied, setCopied] = useState(false)
   const { point: detected, detect, loading: geoLoading } = useGeolocation()
 
-  // Sincroniza com ponto detectado externamente
   useEffect(() => {
-    if (initialPoint) setPoint(initialPoint)
+    setPoint(initialPoint)
   }, [initialPoint])
 
   useEffect(() => {
@@ -46,36 +45,44 @@ export function QuickShare({ hideButton = false, initialPoint = null }: QuickSha
     }
   }, [detected])
 
-  // Atualiza GPS ao abrir sheet
-  const handleOpenChange = (v: boolean) => {
-    setOpen(v)
-    if (v && !point) {
-      refreshGps()
+  const handleOpenChange = (value: boolean) => {
+    setOpen(value)
+    if (value && !point) {
+      void refreshGps()
     }
   }
 
   const refreshGps = async () => {
     setLoading(true)
     try {
-      await detect(true)
-    } catch (e) {
-      toast.error('Não foi possível obter GPS', {
-        description: 'Verifique permissão de localização.',
-      })
+      const nextPoint = await detect(true)
+      if (!nextPoint) {
+        toast.error('Não foi possível obter localização', {
+          description: 'Verifique a permissão do GPS ou tente novamente quando houver rede.',
+        })
+        return
+      }
+      setPoint({ lat: nextPoint.lat, lon: nextPoint.lon, source: nextPoint.source })
     } finally {
       setLoading(false)
     }
   }
 
-  // Texto pronto para compartilhamento
   const buildShareText = (): string => {
-    if (!point) return 'Aussy Ontech — aguardando GPS...'
+    if (!point) return 'Aussy Ontech — aguardando localização...'
     const gmaps = `https://maps.google.com/?q=${point.lat.toFixed(6)},${point.lon.toFixed(6)}`
-    const src = point.source === 'gps' ? 'GPS preciso' : point.source === 'ip' ? 'IP aprox.' : 'manual'
+    const sourceLabel = point.source === 'gps'
+      ? 'GPS preciso'
+      : point.source === 'ip'
+        ? 'IP aproximado'
+        : point.source === 'cached'
+          ? 'última posição conhecida'
+          : 'posição manual'
+
     return `🆘 PRECISO DE AJUDA — Aussy Ontech
 
 📍 Localização: ${point.lat.toFixed(6)}, ${point.lon.toFixed(6)}
-🎯 Precisão: ${src}
+🎯 Origem: ${sourceLabel}
 🗺️ Mapa: ${gmaps}
 
 Bateria pode acabar. Por favor, ligue 192 (SAMU) ou 190 (Polícia) e encaminhe esta mensagem.`
@@ -83,7 +90,7 @@ Bateria pode acabar. Por favor, ligue 192 (SAMU) ou 190 (Polícia) e encaminhe e
 
   const handleWebShare = async () => {
     if (!point) {
-      toast.error('Aguarde o GPS')
+      toast.error('Aguarde a localização')
       return
     }
     const text = buildShareText()
@@ -95,37 +102,35 @@ Bateria pode acabar. Por favor, ligue 192 (SAMU) ou 190 (Polícia) e encaminhe e
           url: `https://maps.google.com/?q=${point.lat},${point.lon}`,
         })
         toast.success('Compartilhado!')
-      } catch (e) {
-        // user cancelled — silencioso
+      } catch {
+        // Cancelamento pelo usuário não é erro operacional.
       }
     } else {
       await copyToClipboard()
     }
   }
 
-  const handleWhatsapp = async () => {
+  const handleWhatsapp = () => {
     if (!point) {
-      toast.error('Aguarde o GPS')
+      toast.error('Aguarde a localização')
       return
     }
     const text = encodeURIComponent(buildShareText())
-    // Tenta abrir WhatsApp; se não tiver, cai no wa.me
-    window.open(`https://wa.me/?text=${text}`, '_blank')
+    window.open(`https://wa.me/?text=${text}`, '_blank', 'noopener,noreferrer')
   }
 
   const handleSms = () => {
     if (!point) {
-      toast.error('Aguarde o GPS')
+      toast.error('Aguarde a localização')
       return
     }
-    // Abre app de SMS nativo com texto pré-preenchido
     const body = encodeURIComponent(buildShareText())
     window.location.href = `sms:?&body=${body}`
   }
 
   const copyToClipboard = async () => {
     if (!point) {
-      toast.error('Aguarde o GPS')
+      toast.error('Aguarde a localização')
       return
     }
     try {
@@ -135,7 +140,7 @@ Bateria pode acabar. Por favor, ligue 192 (SAMU) ou 190 (Polícia) e encaminhe e
         description: 'Cole em qualquer app de mensagem.',
       })
       setTimeout(() => setCopied(false), 2000)
-    } catch (e) {
+    } catch {
       toast.error('Falha ao copiar')
     }
   }
@@ -144,9 +149,18 @@ Bateria pode acabar. Por favor, ligue 192 (SAMU) ou 190 (Polícia) e encaminhe e
     ? `https://maps.google.com/?q=${point.lat},${point.lon}`
     : '#'
 
+  const provenanceLabel = point?.source === 'gps'
+    ? 'GPS'
+    : point?.source === 'ip'
+      ? 'IP'
+      : point?.source === 'cached'
+        ? 'CACHE'
+        : point
+          ? 'MANUAL'
+          : null
+
   return (
     <>
-      {/* Botão flutuante */}
       {!hideButton && (
         <button
           onClick={() => handleOpenChange(true)}
@@ -155,20 +169,20 @@ Bateria pode acabar. Por favor, ligue 192 (SAMU) ou 190 (Polícia) e encaminhe e
         >
           <Share2 className="h-6 w-6" />
           <span className="absolute inset-0 rounded-full border-2 border-signal/40 animate-ping opacity-30" />
-          {/* Mini-indicador de status */}
           <span
             className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-background ${
               point?.source === 'gps'
                 ? 'bg-emerald-400'
                 : point?.source === 'ip'
-                ? 'bg-amber-400'
-                : 'bg-muted-foreground'
+                  ? 'bg-amber-400'
+                  : point?.source === 'cached'
+                    ? 'bg-cyan-400'
+                    : 'bg-muted-foreground'
             }`}
           />
         </button>
       )}
 
-      {/* Bottom Sheet */}
       <Sheet open={open} onOpenChange={handleOpenChange}>
         <SheetContent side="bottom" className="max-h-[90vh] overflow-y-auto">
           <SheetHeader>
@@ -177,12 +191,11 @@ Bateria pode acabar. Por favor, ligue 192 (SAMU) ou 190 (Polícia) e encaminhe e
               Compartilhar minha localização
             </SheetTitle>
             <SheetDescription>
-              Envia sua posição GPS pronta para SMS, WhatsApp ou qualquer app.
+              Envia a posição disponível pronta para SMS, WhatsApp ou qualquer app. Confira a origem antes de compartilhar.
             </SheetDescription>
           </SheetHeader>
 
           <div className="space-y-4 mt-4">
-            {/* Card de status do GPS */}
             <div className="p-4 rounded-xl border border-border/50 bg-secondary/30">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
@@ -191,21 +204,28 @@ Bateria pode acabar. Por favor, ligue 192 (SAMU) ou 190 (Polícia) e encaminhe e
                     {point ? `${point.lat.toFixed(6)}, ${point.lon.toFixed(6)}` : 'aguardando...'}
                   </span>
                 </div>
-                {point && (
+                {point && provenanceLabel && (
                   <Badge
                     variant="outline"
                     className={`text-[10px] font-mono-jet ${
                       point.source === 'gps'
                         ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
                         : point.source === 'ip'
-                        ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                        : 'bg-signal/10 text-signal border-signal/30'
+                          ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                          : point.source === 'cached'
+                            ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30'
+                            : 'bg-signal/10 text-signal border-signal/30'
                     }`}
                   >
-                    {point.source === 'gps' ? 'GPS' : point.source === 'ip' ? 'IP' : 'MANUAL'}
+                    {provenanceLabel}
                   </Badge>
                 )}
               </div>
+              {point?.source === 'cached' && (
+                <p className="mb-2 text-[10px] leading-relaxed text-cyan-200/80">
+                  Esta é a última posição conhecida, não uma leitura GPS atual. Atualize o GPS sempre que possível antes de enviar um SOS.
+                </p>
+              )}
               <Button
                 onClick={refreshGps}
                 variant="outline"
@@ -222,19 +242,12 @@ Bateria pode acabar. Por favor, ligue 192 (SAMU) ou 190 (Polícia) e encaminhe e
               </Button>
             </div>
 
-            {/* Botões de compartilhamento */}
             <div className="grid grid-cols-2 gap-2">
-              {/* Web Share nativo */}
-              <Button
-                onClick={handleWebShare}
-                disabled={!point}
-                className="h-12 text-xs"
-              >
+              <Button onClick={handleWebShare} disabled={!point} className="h-12 text-xs">
                 <Send className="h-4 w-4 mr-1.5" />
                 Compartilhar
               </Button>
 
-              {/* WhatsApp */}
               <Button
                 onClick={handleWhatsapp}
                 disabled={!point}
@@ -245,24 +258,12 @@ Bateria pode acabar. Por favor, ligue 192 (SAMU) ou 190 (Polícia) e encaminhe e
                 WhatsApp
               </Button>
 
-              {/* SMS */}
-              <Button
-                onClick={handleSms}
-                disabled={!point}
-                variant="outline"
-                className="h-12 text-xs"
-              >
+              <Button onClick={handleSms} disabled={!point} variant="outline" className="h-12 text-xs">
                 <MessageCircle className="h-4 w-4 mr-1.5" />
                 SMS
               </Button>
 
-              {/* Copiar */}
-              <Button
-                onClick={copyToClipboard}
-                disabled={!point}
-                variant="outline"
-                className="h-12 text-xs"
-              >
+              <Button onClick={copyToClipboard} disabled={!point} variant="outline" className="h-12 text-xs">
                 {copied ? (
                   <Check className="h-4 w-4 mr-1.5 text-emerald-400" />
                 ) : (
@@ -272,7 +273,6 @@ Bateria pode acabar. Por favor, ligue 192 (SAMU) ou 190 (Polícia) e encaminhe e
               </Button>
             </div>
 
-            {/* Preview da mensagem */}
             <div className="p-3 rounded-lg bg-background/50 border border-border/30">
               <div className="text-[10px] font-mono-jet text-muted-foreground mb-1.5">
                 PRÉVIA DA MENSAGEM
@@ -282,7 +282,6 @@ Bateria pode acabar. Por favor, ligue 192 (SAMU) ou 190 (Polícia) e encaminhe e
               </pre>
             </div>
 
-            {/* Link direto */}
             {point && (
               <a
                 href={mapsUrl}
