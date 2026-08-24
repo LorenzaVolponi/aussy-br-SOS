@@ -15,9 +15,7 @@ import { toast } from 'sonner'
 import { useGeolocation } from '@/hooks/use-geolocation'
 
 interface QuickShareProps {
-  /** Quando true, esconde o botão flutuante (ex: já tem outro na tela) */
   hideButton?: boolean
-  /** Ponto já detectado externamente — evita re-fetch */
   initialPoint?: { lat: number; lon: number; source?: string } | null
 }
 
@@ -47,9 +45,7 @@ export function QuickShare({ hideButton = false, initialPoint = null }: QuickSha
 
   const handleOpenChange = (value: boolean) => {
     setOpen(value)
-    if (value && !point) {
-      void refreshGps()
-    }
+    if (value && !point) void refreshGps()
   }
 
   const refreshGps = async () => {
@@ -136,18 +132,14 @@ Bateria pode acabar. Por favor, ligue 192 (SAMU) ou 190 (Polícia) e encaminhe e
     try {
       await navigator.clipboard.writeText(buildShareText())
       setCopied(true)
-      toast.success('Copiado!', {
-        description: 'Cole em qualquer app de mensagem.',
-      })
+      toast.success('Copiado!', { description: 'Cole em qualquer app de mensagem.' })
       setTimeout(() => setCopied(false), 2000)
     } catch {
       toast.error('Falha ao copiar')
     }
   }
 
-  const mapsUrl = point
-    ? `https://maps.google.com/?q=${point.lat},${point.lon}`
-    : '#'
+  const mapsUrl = point ? `https://maps.google.com/?q=${point.lat},${point.lon}` : '#'
 
   const provenanceLabel = point?.source === 'gps'
     ? 'GPS'
@@ -165,7 +157,7 @@ Bateria pode acabar. Por favor, ligue 192 (SAMU) ou 190 (Polícia) e encaminhe e
         <button
           onClick={() => handleOpenChange(true)}
           aria-label="Compartilhar minha localização"
-          className="fixed bottom-5 right-5 z-40 w-14 h-14 rounded-full bg-signal text-white shadow-lg shadow-signal/30 flex items-center justify-center active:scale-95 transition-all hover:scale-105 hover:shadow-signal/50 group"
+          className="fixed bottom-[calc(env(safe-area-inset-bottom)+4.75rem)] right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-signal text-white shadow-lg shadow-signal/30 transition-all active:scale-95 hover:scale-105 hover:shadow-signal/50 landscape:bottom-5 md:bottom-5"
         >
           <Share2 className="h-6 w-6" />
           <span className="absolute inset-0 rounded-full border-2 border-signal/40 animate-ping opacity-30" />
@@ -233,62 +225,34 @@ Bateria pode acabar. Por favor, ligue 192 (SAMU) ou 190 (Polícia) e encaminhe e
                 disabled={loading || geoLoading}
                 className="w-full text-xs h-8"
               >
-                {loading || geoLoading ? (
-                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                ) : (
-                  <MapPin className="h-3 w-3 mr-1" />
-                )}
+                {loading || geoLoading ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <MapPin className="h-3 w-3 mr-1" />}
                 {loading || geoLoading ? 'Adquirindo GPS...' : 'Atualizar GPS'}
               </Button>
             </div>
 
             <div className="grid grid-cols-2 gap-2">
               <Button onClick={handleWebShare} disabled={!point} className="h-12 text-xs">
-                <Send className="h-4 w-4 mr-1.5" />
-                Compartilhar
+                <Send className="h-4 w-4 mr-1.5" /> Compartilhar
               </Button>
-
-              <Button
-                onClick={handleWhatsapp}
-                disabled={!point}
-                variant="outline"
-                className="h-12 text-xs border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10"
-              >
-                <MessageCircle className="h-4 w-4 mr-1.5" />
-                WhatsApp
+              <Button onClick={handleWhatsapp} disabled={!point} variant="outline" className="h-12 text-xs border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10">
+                <MessageCircle className="h-4 w-4 mr-1.5" /> WhatsApp
               </Button>
-
               <Button onClick={handleSms} disabled={!point} variant="outline" className="h-12 text-xs">
-                <MessageCircle className="h-4 w-4 mr-1.5" />
-                SMS
+                <MessageCircle className="h-4 w-4 mr-1.5" /> SMS
               </Button>
-
               <Button onClick={copyToClipboard} disabled={!point} variant="outline" className="h-12 text-xs">
-                {copied ? (
-                  <Check className="h-4 w-4 mr-1.5 text-emerald-400" />
-                ) : (
-                  <Copy className="h-4 w-4 mr-1.5" />
-                )}
+                {copied ? <Check className="h-4 w-4 mr-1.5 text-emerald-400" /> : <Copy className="h-4 w-4 mr-1.5" />}
                 {copied ? 'Copiado!' : 'Copiar texto'}
               </Button>
             </div>
 
             <div className="p-3 rounded-lg bg-background/50 border border-border/30">
-              <div className="text-[10px] font-mono-jet text-muted-foreground mb-1.5">
-                PRÉVIA DA MENSAGEM
-              </div>
-              <pre className="text-[11px] leading-relaxed whitespace-pre-wrap font-mono-jet text-foreground/80">
-                {buildShareText()}
-              </pre>
+              <div className="text-[10px] font-mono-jet text-muted-foreground mb-1.5">PRÉVIA DA MENSAGEM</div>
+              <pre className="text-[11px] leading-relaxed whitespace-pre-wrap font-mono-jet text-foreground/80">{buildShareText()}</pre>
             </div>
 
             {point && (
-              <a
-                href={mapsUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="block w-full text-center text-xs text-signal hover:underline py-2"
-              >
+              <a href={mapsUrl} target="_blank" rel="noreferrer" className="block w-full text-center text-xs text-signal hover:underline py-2">
                 Abrir no Google Maps →
               </a>
             )}
