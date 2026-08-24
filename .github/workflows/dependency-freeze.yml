@@ -2,6 +2,24 @@ name: Dependency Freeze & Release Certification
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'package.json'
+      - 'bun.lock'
+      - '.github/workflows/dependency-freeze.yml'
+      - '.github/workflows/quality.yml'
+      - 'scripts/**'
+      - 'src/**'
+      - 'public/**'
+      - 'next.config.ts'
+      - 'tsconfig.json'
+      - 'eslint.config.mjs'
+      - 'postcss.config.mjs'
+
+concurrency:
+  group: dependency-freeze-main
+  cancel-in-progress: true
 
 permissions:
   contents: write
