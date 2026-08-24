@@ -205,14 +205,23 @@ forbid('src/lib/readiness-state.ts', readiness, [
 
 const page = requireFragments('src/app/page.tsx', [
   'Aguardando localização válida',
-  'O Aussy não usa uma cidade padrão como se fosse sua localização',
-  'Acesso rápido + recursos preparados para offline',
-  'O Aussy não cria conectividade via satélite',
+  'O Aussy não assume uma cidade padrão',
+  'Offline-first',
+  'Última cópia válida em cache',
+  "<EmergencySOS observerLat={point?.lat} observerLon={point?.lon} />",
+  'Aussy Ontech combina recursos locais, fontes externas e cache de última resposta válida',
+  'Não substitui serviços oficiais de emergência',
+  'AIX8C - Uma tecnologia do grupo volponi.tech !',
 ])
 forbid('src/app/page.tsx', page, [
   'const observerLat = point?.lat ?? -15.7801',
   'const observerLon = point?.lon ?? -47.9292',
+  'point?.lat ?? 0',
+  'point?.lon ?? 0',
   '100% offline',
+  '98.7%',
+  '4.897',
+  '+2.4M',
 ])
 
 const zoneFile = findZoneIdentifier()
@@ -224,4 +233,4 @@ if (failures.length) {
   process.exit(1)
 }
 
-console.log('Aussy repository invariants OK — SW v9, official CEMADEN portals, CVV 188, offline resilience and trust gates are aligned')
+console.log('Aussy repository invariants OK — V1 home, SW v9, official CEMADEN portals, CVV 188, offline resilience and trust gates are aligned')
