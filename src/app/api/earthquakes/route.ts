@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
     const features: any[] = Array.isArray(data?.features) ? data.features : []
 
     const events: QuakeEvent[] = features
-      .map((feature: any) => {
+      .map((feature: any): QuakeEvent | null => {
         const coordinates = feature?.geometry?.coordinates
         if (!Array.isArray(coordinates) || coordinates.length < 2) return null
         const [eventLon, eventLat, depth] = coordinates
@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
           distanceKm: Math.round(distance),
           severity: severityFromMag(magnitude),
           tsunami: Boolean(feature?.properties?.tsunami),
-        } satisfies QuakeEvent
+        }
       })
       .filter((event): event is QuakeEvent => Boolean(event && (event.distanceKm ?? Infinity) <= radius))
       .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity))
