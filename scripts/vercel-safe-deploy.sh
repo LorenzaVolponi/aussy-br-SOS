@@ -40,14 +40,14 @@ NODE
 rm -rf .vercel
 
 echo "[vercel-safe-deploy] Construindo artefato de producao no GitHub Actions..."
-vercel build --prod --yes --project "$PROJECT_NAME" --team "$TEAM_SLUG" --token "$VERCEL_TOKEN"
+vercel build --prod --yes --project "$PROJECT_NAME" --scope "$TEAM_SLUG" --token "$VERCEL_TOKEN"
 
 max_attempts=3
 attempt=1
 while [[ $attempt -le $max_attempts ]]; do
   echo "[vercel-safe-deploy] Enviando artefato prebuilt (${attempt}/${max_attempts})..."
   set +e
-  output=$(vercel deploy --prebuilt --prod --yes --project "$PROJECT_NAME" --team "$TEAM_SLUG" --token "$VERCEL_TOKEN" 2>&1)
+  output=$(vercel deploy --prebuilt --prod --yes --project "$PROJECT_NAME" --scope "$TEAM_SLUG" --token "$VERCEL_TOKEN" 2>&1)
   code=$?
   set -e
 
