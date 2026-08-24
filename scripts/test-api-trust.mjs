@@ -24,6 +24,8 @@ const eonetUiPath = 'src/components/aussy/eonet-card.tsx'
 const geocodePath = 'src/app/api/geocode/route.ts'
 const ibgePath = 'src/app/api/ibge/municipios/route.ts'
 const coveragePath = 'src/app/api/coverage/towers/route.ts'
+const coverageUiPath = 'src/components/aussy/coverage-map.tsx'
+const provenancePath = 'src/components/aussy/data-provenance.tsx'
 const healthPath = 'src/app/api/route.ts'
 
 const eonetRoute = await read(eonetRoutePath)
@@ -113,6 +115,29 @@ forbidFragments(coveragePath, coverage, [
   'Math.random()',
   'sim-erb-',
   "towers: 'synthetic'",
+])
+
+const coverageUi = await read(coverageUiPath)
+requireFragments(coverageUiPath, coverageUi, [
+  "towers: 'unavailable'",
+  'quality="unavailable"',
+  'O Aussy não exibe posições estimadas ou simuladas de ERBs.',
+  'Nenhuma posição de antena é inferida ou fabricada.',
+  'hasValidObserver',
+])
+forbidFragments(coverageUiPath, coverageUi, [
+  'ERBs simuladas por operadora',
+  'pontos simulados',
+  'simulação mais próxima',
+  'BRAZIL_OPERATORS',
+  'selectedOperator',
+  'quality="synthetic"',
+])
+
+const provenance = await read(provenancePath)
+requireFragments(provenancePath, provenance, [
+  "'unavailable'",
+  "label: 'INDISPONÍVEL'",
 ])
 
 const health = await read(healthPath)
