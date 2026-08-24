@@ -2,6 +2,7 @@
 set -euo pipefail
 
 PROJECT_NAME="${VERCEL_PROJECT_NAME:-aussy-br-sos}"
+TEAM_SLUG="${VERCEL_TEAM_SLUG:-adm-wuazecoms-projects}"
 
 if [[ -z "${VERCEL_TOKEN:-}" || -z "${VERCEL_ORG_ID:-}" ]]; then
   echo "[vercel-safe-deploy] VERCEL_TOKEN e VERCEL_ORG_ID sao obrigatorios." >&2
@@ -10,8 +11,6 @@ fi
 
 npm i -g vercel >/dev/null 2>&1
 
-# O token scoped ja conhece o projeto. Ainda validamos que o projeto existe no team correto
-# para falhar cedo caso o secret esteja apontando para outro ambiente.
 echo "[vercel-safe-deploy] Validando projeto atual: ${PROJECT_NAME}"
 node <<'NODE'
 const token = process.env.VERCEL_TOKEN;
@@ -38,18 +37,17 @@ const url = `https://api.vercel.com/v9/projects/${encodeURIComponent(projectName
 });
 NODE
 
-# Nao carregamos metadata local antiga. O projeto e selecionado explicitamente pela CLI.
 rm -rf .vercel
 
 echo "[vercel-safe-deploy] Construindo artefato de producao no GitHub Actions..."
-vercel build --prod --yes --project "$PROJECT_NAME" --token "$VERCEL_TOKEN"
+vercel build --prod --yes --project "$PROJECT_NAME" --team "$TEAM_SLUG" --token "$VERCEL_TOKEN"
 
 max_attempts=3
 attempt=1
 while [[ $attempt -le $max_attempts ]]; do
   echo "[vercel-safe-deploy] Enviando artefato prebuilt (${attempt}/${max_attempts})..."
   set +e
-  output=$(vercel deploy --prebuilt --prod --yes --project "$PROJECT_NAME" --token "$VERCEL_TOKEN" 2>&1)
+  output=$(vercel deploy --prebuilt --prod --yes --project "$PROJECT_NAME" --team "$TEAM_SLUG" --token "$VERCEL_TOKEN" 2>&1)
   code=$?
   set -e
 
