@@ -10,8 +10,10 @@ fi
 
 npm i -g vercel >/dev/null 2>&1
 
-echo "[vercel-safe-deploy] Resolvendo projeto atual: ${PROJECT_NAME}"
-VERCEL_PROJECT_ID="$(node <<'NODE'
+# O token scoped ja conhece o projeto. Ainda validamos que o projeto existe no team correto
+# para falhar cedo caso o secret esteja apontando para outro ambiente.
+echo "[vercel-safe-deploy] Validando projeto atual: ${PROJECT_NAME}"
+node <<'NODE'
 const token = process.env.VERCEL_TOKEN;
 const teamId = process.env.VERCEL_ORG_ID;
 const projectName = process.env.VERCEL_PROJECT_NAME || 'aussy-br-sos';
@@ -20,7 +22,7 @@ const url = `https://api.vercel.com/v9/projects/${encodeURIComponent(projectName
   const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   const text = await response.text();
   if (!response.ok) {
-    console.error(`[vercel-safe-deploy] Nao foi possivel resolver ${projectName}: HTTP ${response.status}`);
+    console.error(`[vercel-safe-deploy] Nao foi possivel validar ${projectName}: HTTP ${response.status}`);
     console.error(text.slice(0, 1000));
     process.exit(3);
   }
@@ -29,32 +31,25 @@ const url = `https://api.vercel.com/v9/projects/${encodeURIComponent(projectName
     console.error('[vercel-safe-deploy] Resposta da Vercel sem project id.');
     process.exit(4);
   }
-  process.stdout.write(project.id);
+  console.log(`[vercel-safe-deploy] Projeto validado: ${project.id}`);
 })().catch((error) => {
   console.error(error);
   process.exit(5);
 });
 NODE
-)"
 
-export VERCEL_ORG_ID VERCEL_PROJECT_ID VERCEL_PROJECT_NAME="$PROJECT_NAME"
-echo "[vercel-safe-deploy] Projeto resolvido: ${VERCEL_PROJECT_ID}"
-
-# Garante que nenhuma metadata local antiga interfira na vinculacao do projeto.
+# Nao carregamos metadata local antiga. O projeto e selecionado explicitamente pela CLI.
 rm -rf .vercel
-mkdir -p .vercel
-printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$VERCEL_PROJECT_ID" > .vercel/project.json
 
 echo "[vercel-safe-deploy] Construindo artefato de producao no GitHub Actions..."
-# --yes permite que a CLI sincronize Project Settings e env de producao para o projeto ja vinculado.
-vercel build --prod --yes --token "$VERCEL_TOKEN"
+vercel build --prod --yes --project "$PROJECT_NAME" --token "$VERCEL_TOKEN"
 
 max_attempts=3
 attempt=1
 while [[ $attempt -le $max_attempts ]]; do
   echo "[vercel-safe-deploy] Enviando artefato prebuilt (${attempt}/${max_attempts})..."
   set +e
-  output=$(vercel deploy --prebuilt --prod --yes --token "$VERCEL_TOKEN" 2>&1)
+  output=$(vercel deploy --prebuilt --prod --yes --project "$PROJECT_NAME" --token "$VERCEL_TOKEN" 2>&1)
   code=$?
   set -e
 
