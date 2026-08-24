@@ -9,8 +9,8 @@ interface OrientationState {
   orientation: Orientation
   layout: LayoutMode
   isLandscape: boolean
-  isWide: boolean // largura >= 1024px
-  isTablet: boolean // largura >= 768px
+  isWide: boolean
+  isTablet: boolean
   hasNotch: boolean
   safeArea: {
     top: number
@@ -20,12 +20,6 @@ interface OrientationState {
   }
 }
 
-/**
- * Detecta orientação e modo de layout do dispositivo.
- * - Celular em retrato: tabs no topo
- * - Celular em paisagem: sidebar à esquerda + conteúdo à direita
- * - Tablet/desktop: sidebar à esquerda expandida
- */
 export function useOrientation(): OrientationState {
   const [state, setState] = useState<OrientationState>({
     orientation: 'portrait',
@@ -40,28 +34,27 @@ export function useOrientation(): OrientationState {
   useEffect(() => {
     if (typeof window === 'undefined') return
 
+    let orientationTimer: ReturnType<typeof setTimeout> | null = null
+
     const update = () => {
-      const w = window.innerWidth
-      const h = window.innerHeight
-      const isLandscape = w > h
-      const isWide = w >= 1024
-      const isTablet = w >= 768
+      const width = window.innerWidth
+      const height = window.innerHeight
+      const isLandscape = width > height
+      const isWide = width >= 1024
+      const isTablet = width >= 768
 
       let layout: LayoutMode = 'mobile-portrait'
       if (isWide) layout = 'desktop'
       else if (isTablet) layout = 'tablet'
       else if (isLandscape) layout = 'mobile-landscape'
-      else layout = 'mobile-portrait'
 
-      // Detect notch / dynamic island via env() (apenas iOS)
-      const cs = getComputedStyle(document.documentElement)
+      const rootStyle = getComputedStyle(document.documentElement)
       const safeArea = {
-        top: parseInt(cs.getPropertyValue('--sat-top') || '0', 10) || 0,
-        bottom: parseInt(cs.getPropertyValue('--sat-bottom') || '0', 10) || 0,
-        left: parseInt(cs.getPropertyValue('--sat-left') || '0', 10) || 0,
-        right: parseInt(cs.getPropertyValue('--sat-right') || '0', 10) || 0,
+        top: parseInt(rootStyle.getPropertyValue('--sat-top') || '0', 10) || 0,
+        bottom: parseInt(rootStyle.getPropertyValue('--sat-bottom') || '0', 10) || 0,
+        left: parseInt(rootStyle.getPropertyValue('--sat-left') || '0', 10) || 0,
+        right: parseInt(rootStyle.getPropertyValue('--sat-right') || '0', 10) || 0,
       }
-      const hasNotch = safeArea.top > 0 || safeArea.bottom > 0
 
       setState({
         orientation: isLandscape ? 'landscape' : 'portrait',
@@ -69,50 +62,42 @@ export function useOrientation(): OrientationState {
         isLandscape,
         isWide,
         isTablet,
-        hasNotch,
+        hasNotch: safeArea.top > 0 || safeArea.bottom > 0,
         safeArea,
       })
     }
 
-    // CSS env() não é legível via getComputedStyle direto — precisamos de um truco
-    // usando um elemento temporário com position fixed e padding env()
     const probe = document.createElement('div')
     probe.style.cssText =
       'position:fixed;top:0;left:0;width:0;height:0;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);visibility:hidden;pointer-events:none;'
     document.body.appendChild(probe)
-    const cs = getComputedStyle(probe)
-    document.documentElement.style.setProperty(
-      '--sat-top',
-      cs.paddingTop || '0px'
-    )
-    document.documentElement.style.setProperty(
-      '--sat-bottom',
-      cs.paddingBottom || '0px'
-    )
-    document.documentElement.style.setProperty(
-      '--sat-left',
-      cs.paddingLeft || '0px'
-    )
-    document.documentElement.style.setProperty(
-      '--sat-right',
-      cs.paddingRight || '0px'
-    )
+    const probeStyle = getComputedStyle(probe)
+    document.documentElement.style.setProperty('--sat-top', probeStyle.paddingTop || '0px')
+    document.documentElement.style.setProperty('--sat-bottom', probeStyle.paddingBottom || '0px')
+    document.documentElement.style.setProperty('--sat-left', probeStyle.paddingLeft || '0px')
+    document.documentElement.style.setProperty('--sat-right', probeStyle.paddingRight || '0px')
     document.body.removeChild(probe)
+
+    const handleOrientationChange = () => {
+      if (orientationTimer) clearTimeout(orientationTimer)
+      orientationTimer = setTimeout(update, 250)
+    }
 
     update()
 
-    // ResizeObserver cobre rotação + mudança de viewport
-    const ro = new ResizeObserver(update)
-    ro.observe(document.documentElement)
+    const resizeObserver = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(update)
+      : null
+
+    resizeObserver?.observe(document.documentElement)
     window.addEventListener('resize', update)
-    window.addEventListener('orientationchange', () => {
-      // espera a rotação completar
-      setTimeout(update, 250)
-    })
+    window.addEventListener('orientationchange', handleOrientationChange)
 
     return () => {
-      ro.disconnect()
+      if (orientationTimer) clearTimeout(orientationTimer)
+      resizeObserver?.disconnect()
       window.removeEventListener('resize', update)
+      window.removeEventListener('orientationchange', handleOrientationChange)
     }
   }, [])
 
