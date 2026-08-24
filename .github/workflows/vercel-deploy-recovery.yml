@@ -1,0 +1,116 @@
+name: Vercel deployment recovery
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  statuses: read
+  checks: read
+
+concurrency:
+  group: vercel-deployment-recovery
+  cancel-in-progress: false
+
+jobs:
+  recover-production:
+    name: Recover production deployment
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Validate recovery configuration
+        id: config
+        env:
+          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$VERCEL_DEPLOY_HOOK_URL" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Vercel recovery inactive::Add the VERCEL_DEPLOY_HOOK_URL repository secret to enable automatic recovery."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Inspect latest main deployment status
+        id: deployment
+        if: steps.config.outputs.configured == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const branch = await github.rest.repos.getBranch({ owner, repo, branch: "main" });
+            const sha = branch.data.commit.sha;
+            core.setOutput("sha", sha);
+
+            const combined = await github.rest.repos.getCombinedStatusForRef({ owner, repo, ref: sha });
+            const vercelStatuses = combined.data.statuses
+              .filter((status) => status.context.toLowerCase().includes("vercel"))
+              .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+
+            if (vercelStatuses.length === 0) {
+              core.notice(`No Vercel status found for ${sha}. Nothing will be retried.`);
+              core.setOutput("retry", "false");
+              core.setOutput("state", "missing");
+              return;
+            }
+
+            const latest = vercelStatuses[0];
+            const ageMinutes = Math.floor((Date.now() - new Date(latest.updated_at).getTime()) / 60000);
+            const failed = latest.state === "failure" || latest.state === "error";
+            const stale = latest.state === "pending" && ageMinutes >= 45;
+            core.setOutput("retry", String(failed || stale));
+            core.setOutput("state", latest.state);
+            core.setOutput("age_minutes", String(ageMinutes));
+
+      - name: Trigger recovery deployment
+        if: steps.deployment.outputs.retry == 'true'
+        env:
+          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+        run: |
+          set +e
+          response_file="$(mktemp)"
+          http_code="$(curl --silent --show-error --location --request POST --max-time 30 --output "$response_file" --write-out '%{http_code}' "$VERCEL_DEPLOY_HOOK_URL")"
+          curl_exit=$?
+          response_body="$(cat "$response_file")"
+          rm -f "$response_file"
+          set -e
+
+          if [ "$curl_exit" -ne 0 ]; then
+            echo "::warning title=Vercel recovery unavailable::The deploy hook could not be reached."
+            exit 0
+          fi
+
+          if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+            echo "Vercel accepted the recovery deployment for commit ${{ steps.deployment.outputs.sha }}."
+            exit 0
+          fi
+
+          case "$http_code" in
+            402|409|423|429|503)
+              echo "::warning title=Vercel still limited::Vercel returned HTTP $http_code. Automatic recovery will try again later."
+              ;;
+            *)
+              echo "Vercel response: $response_body"
+              echo "::error title=Vercel recovery misconfigured::Deploy hook returned HTTP $http_code."
+              exit 1
+              ;;
+          esac
+
+      - name: Publish recovery summary
+        if: always()
+        run: |
+          {
+            echo "## Vercel deployment recovery"
+            echo
+            if [ "${{ steps.config.outputs.configured }}" != "true" ]; then
+              echo "Recovery is installed but inactive because the repository secret is missing."
+            elif [ "${{ steps.deployment.outputs.retry }}" = "true" ]; then
+              echo "A recovery attempt was requested for \`${{ steps.deployment.outputs.sha }}\`."
+              echo "Detected Vercel state: \`${{ steps.deployment.outputs.state }}\`."
+            else
+              echo "No recovery deployment was necessary."
+              echo "Detected Vercel state: \`${{ steps.deployment.outputs.state }}\`."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

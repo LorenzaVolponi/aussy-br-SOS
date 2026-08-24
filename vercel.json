@@ -2,8 +2,11 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "regions": ["gru1"],
-  "github": {
-    "silent": false
+  "git": {
+    "deploymentEnabled": {
+      "*": false,
+      "main": true
+    }
   },
   "buildCommand": "bun run build",
   "installCommand": "bun install",
