@@ -16,7 +16,7 @@ concurrency:
 jobs:
   deploy-fallback:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -58,17 +58,24 @@ jobs:
           VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           hook=false
           cli=false
           if [ -n "${VERCEL_DEPLOY_HOOK_URL:-}" ]; then hook=true; fi
-          if [ -n "${VERCEL_TOKEN:-}" ] && [ -n "${VERCEL_ORG_ID:-}" ] && [ -n "${VERCEL_PROJECT_ID:-}" ]; then cli=true; fi
+          if [ -n "${VERCEL_TOKEN:-}" ] && [ -n "${VERCEL_ORG_ID:-}" ]; then cli=true; fi
           echo "hook=$hook" >> "$GITHUB_OUTPUT"
           echo "cli=$cli" >> "$GITHUB_OUTPUT"
 
+      - name: Run prebuilt CLI fallback
+        if: steps.vercel.outputs.fallback == 'true' && steps.creds.outputs.cli == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_NAME: aussy-br-sos
+        run: bash scripts/vercel-safe-deploy.sh
+
       - name: Trigger Vercel deploy hook
-        if: steps.vercel.outputs.fallback == 'true' && steps.creds.outputs.hook == 'true'
+        if: steps.vercel.outputs.fallback == 'true' && steps.creds.outputs.cli != 'true' && steps.creds.outputs.hook == 'true'
         env:
           VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
         run: |
@@ -79,18 +86,10 @@ jobs:
             exit 1
           fi
 
-      - name: Run prebuilt CLI fallback
-        if: steps.vercel.outputs.fallback == 'true' && steps.creds.outputs.hook != 'true' && steps.creds.outputs.cli == 'true'
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-        run: bash scripts/vercel-safe-deploy.sh
-
       - name: Fail clearly when no fallback credentials exist
-        if: steps.vercel.outputs.fallback == 'true' && steps.creds.outputs.hook != 'true' && steps.creds.outputs.cli != 'true'
+        if: steps.vercel.outputs.fallback == 'true' && steps.creds.outputs.cli != 'true' && steps.creds.outputs.hook != 'true'
         run: |
-          echo "::error title=Vercel fallback unavailable::Native deploy failed and no VERCEL_DEPLOY_HOOK_URL or complete VERCEL_TOKEN/VERCEL_ORG_ID/VERCEL_PROJECT_ID secrets are configured."
+          echo "::error title=Vercel fallback unavailable::Native deploy failed and no VERCEL_TOKEN/VERCEL_ORG_ID pair or VERCEL_DEPLOY_HOOK_URL is configured."
           exit 1
 
       - name: Summary
@@ -101,6 +100,6 @@ jobs:
             echo
             echo "Native status: \`${{ steps.vercel.outputs.state || 'unknown' }}\`"
             echo
+            echo "CLI prebuilt configured: \`${{ steps.creds.outputs.cli || 'n/a' }}\`"
             echo "Deploy hook configured: \`${{ steps.creds.outputs.hook || 'n/a' }}\`"
-            echo "CLI fallback configured: \`${{ steps.creds.outputs.cli || 'n/a' }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
