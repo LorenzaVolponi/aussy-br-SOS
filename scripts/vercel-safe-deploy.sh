@@ -67,7 +67,7 @@ while [[ $attempt -le $max_attempts ]]; do
   fi
 
   echo "$output"
-  if echo "$output" | grep -Eqi "rate limit|deployment rate limited|retry in|too many requests"; then
+  if echo "$output" | grep -Eqi "rate limit|deployment rate limited|retry in|too many requests|resource is limited|try again in 24 hours|api-deployments-free-per-day"; then
     echo "[vercel-safe-deploy] Limite de deployment detectado; encerrando sem loop agressivo." >&2
     exit 75
   fi
