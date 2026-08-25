@@ -13,10 +13,12 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
   webServer: {
-    command: 'bun run dev',
+    // CI validates the same optimized runtime shape used in production instead of
+    // relying on Next dev/HMR, which can serve transient/forbidden dev chunks.
+    command: process.env.CI ? 'bun run build && bun run start' : 'bun run dev',
     url: 'http://127.0.0.1:3000',
     reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
+    timeout: 180_000,
   },
   projects: [
     { name: 'iphone-webkit', use: { ...devices['iPhone 13'] } },
