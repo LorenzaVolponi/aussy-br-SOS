@@ -8,9 +8,9 @@ test.describe('Aussy V1 mobile', () => {
 
   test('home renders critical actions without horizontal overflow', async ({ page }) => {
     await page.goto('/')
-    await expect(page.getByText('AUSSY', { exact: false }).first()).toBeVisible()
-    await expect(page.getByText('S.O.S. IMEDIATO')).toBeVisible()
-    await expect(page.getByRole('button', { name: /SOS/i }).first()).toBeVisible()
+    await expect(page.getByText('AUSSY', { exact: true }).first()).toBeVisible()
+    await expect(page.getByText('TOQUE PARA EMERGÊNCIA', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Abrir emergência SOS/i })).toBeVisible()
 
     const dimensions = await page.evaluate(() => ({
       innerWidth: window.innerWidth,
@@ -28,7 +28,7 @@ test.describe('Aussy V1 mobile', () => {
 
   test('QR location opens and stays usable on mobile viewport', async ({ page }) => {
     await page.goto('/')
-    await page.getByRole('button', { name: /QR Local/i }).click()
+    await page.getByRole('button', { name: /QR localização/i }).click()
     await expect(page.getByText('QR Code da localização')).toBeVisible()
     await expect(page.getByRole('button', { name: /Atualizar GPS/i })).toBeVisible()
   })
@@ -36,7 +36,9 @@ test.describe('Aussy V1 mobile', () => {
   test('bottom navigation remains reachable', async ({ page }) => {
     await page.goto('/')
     await expect(page.getByRole('button', { name: /Início/i }).last()).toBeVisible()
-    await expect(page.getByRole('button', { name: /Clima/i }).last()).toBeVisible()
+    await expect(page.getByRole('button', { name: /^SOS$/i }).last()).toBeVisible()
     await expect(page.getByRole('button', { name: /Mapa/i }).last()).toBeVisible()
+    await expect(page.getByRole('button', { name: /Alertas/i }).last()).toBeVisible()
+    await expect(page.getByRole('button', { name: /Mais/i }).last()).toBeVisible()
   })
 })

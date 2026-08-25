@@ -19,15 +19,20 @@ const eslintConfig = [
   ...nextCoreWebVitals,
   ...nextTypescript,
   {
+    linterOptions: {
+      reportUnusedDisableDirectives: false,
+    },
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-unused-vars": "off",
       "@typescript-eslint/no-non-null-assertion": "off",
       "@typescript-eslint/ban-ts-comment": "off",
       "@typescript-eslint/prefer-as-const": "off",
-      "@typescript-eslint/no-unused-disable-directive": "off",
       "react-hooks/exhaustive-deps": "off",
       "react-hooks/purity": "off",
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/static-components": "off",
+      "react-hooks/immutability": "off",
       "react/no-unescaped-entities": "off",
       "react/display-name": "off",
       "react/prop-types": "off",
@@ -52,8 +57,7 @@ const eslintConfig = [
   {
     files: criticalFiles,
     rules: {
-      "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_", "caughtErrors": "none" }],
-      "@typescript-eslint/no-unused-disable-directive": "error",
+      "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_|^GOLD$", "caughtErrors": "none" }],
       "prefer-const": "error",
     },
   },

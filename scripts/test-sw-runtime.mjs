@@ -42,6 +42,19 @@ const json = (payload, status = 200) => new Response(JSON.stringify(payload), {
   headers: { 'Content-Type': 'application/json' },
 })
 
+const cemadenPortalPayload = {
+  source: 'CEMADEN / MCTI — canais oficiais',
+  automationAvailable: false,
+  dataQuality: 'official-portal',
+  alerts: [],
+  portals: [
+    { label: 'Alertas em tempo real', url: 'https://www.gov.br/cemaden/pt-br/assuntos/monitoramento/alertas-em-tempo-real' },
+    { label: 'Previsão de riscos', url: 'https://www.gov.br/cemaden/pt-br/assuntos/monitoramento/previsao-de-riscos' },
+    { label: 'GeoRisk', url: 'https://georisk.cemaden.gov.br/' },
+  ],
+  note: 'Lista vazia NÃO significa ausência de alertas ativos. Consulte os portais oficiais.',
+}
+
 async function mockFetch(input) {
   if (!online) throw new TypeError('network offline')
   const href = normalize(input)
@@ -56,6 +69,7 @@ async function mockFetch(input) {
     )
   }
   if (url.pathname.startsWith('/_next/static/')) return new Response(`asset:${url.pathname}`)
+  if (url.pathname === '/api/cemaden/alerts') return json(cemadenPortalPayload)
   if (url.pathname.startsWith('/api/')) return json({ online: true, source: 'mock-live', value: url.pathname })
   return new Response(`asset:${url.pathname}`)
 }

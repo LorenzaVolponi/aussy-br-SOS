@@ -55,7 +55,7 @@ requireFragments(eonetUiPath, eonetUi, [
   "res.headers.get('X-Aussy-Offline')",
   'Última resposta válida preservada pelo Service Worker',
   'Isso não equivale a afirmar ausência de qualquer risco natural na região',
-  'não é um sensor nem garantia de risco local em tempo real',
+  'Não é um sensor nem garantia de risco local em tempo real',
   'DataProvenance',
 ])
 forbidFragments(eonetUiPath, eonetUi, [
