@@ -66,12 +66,15 @@ jobs:
           echo "hook=$hook" >> "$GITHUB_OUTPUT"
           echo "cli=$cli" >> "$GITHUB_OUTPUT"
 
-      - name: Run prebuilt CLI fallback
+      - name: Run prebuilt CLI fallback with cooldown
         if: steps.vercel.outputs.fallback == 'true' && steps.creds.outputs.cli == 'true'
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_NAME: aussy-br-sos
+          VERCEL_DEPLOY_COOLDOWN_SECONDS: '180'
+          VERCEL_RATE_LIMIT_BACKOFF_SECONDS: '180'
+          VERCEL_DEPLOY_MAX_ATTEMPTS: '3'
         run: bash scripts/vercel-safe-deploy.sh
 
       - name: Trigger Vercel deploy hook
@@ -102,4 +105,6 @@ jobs:
             echo
             echo "CLI prebuilt configured: \`${{ steps.creds.outputs.cli || 'n/a' }}\`"
             echo "Deploy hook configured: \`${{ steps.creds.outputs.hook || 'n/a' }}\`"
+            echo "Preventive CLI cooldown: \`180s\`"
+            echo "Temporary rate-limit backoff: \`180s x attempt\`"
           } >> "$GITHUB_STEP_SUMMARY"
