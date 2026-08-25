@@ -19,13 +19,15 @@ const eslintConfig = [
   ...nextCoreWebVitals,
   ...nextTypescript,
   {
+    linterOptions: {
+      reportUnusedDisableDirectives: true,
+    },
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-unused-vars": "off",
       "@typescript-eslint/no-non-null-assertion": "off",
       "@typescript-eslint/ban-ts-comment": "off",
       "@typescript-eslint/prefer-as-const": "off",
-      "@typescript-eslint/no-unused-disable-directive": "off",
       "react-hooks/exhaustive-deps": "off",
       "react-hooks/purity": "off",
       "react/no-unescaped-entities": "off",
@@ -51,9 +53,11 @@ const eslintConfig = [
   },
   {
     files: criticalFiles,
+    linterOptions: {
+      reportUnusedDisableDirectives: "error",
+    },
     rules: {
       "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_", "caughtErrors": "none" }],
-      "@typescript-eslint/no-unused-disable-directive": "error",
       "prefer-const": "error",
     },
   },
