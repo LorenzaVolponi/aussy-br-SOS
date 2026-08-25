@@ -31,6 +31,19 @@ export interface FocoQueimada {
   risco: 'Baixo' | 'Médio' | 'Alto' | 'Crítico'
 }
 
+function parseCoordinate(value: string | null, min: number, max: number): number | null {
+  if (value === null || value.trim() === '') return null
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) return null
+  return parsed
+}
+
+function boundedRadius(value: string | null): number {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return 200
+  return Math.min(Math.max(Math.round(parsed), 1), 1000)
+}
+
 function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371
   const dLat = ((lat2 - lat1) * Math.PI) / 180
@@ -99,24 +112,47 @@ function proximityRisk(distanceKm: number): FocoQueimada['risco'] {
   return 'Baixo'
 }
 
+async function fetchText(url: string, timeoutMs: number, accept: string): Promise<string> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      cache: 'no-store',
+      headers: { Accept: accept },
+    })
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    return await response.text()
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url)
-  const lat = parseFloat(url.searchParams.get('lat') || '-15.7801')
-  const lon = parseFloat(url.searchParams.get('lon') || '-47.9292')
-  const raio = Math.min(Math.max(parseInt(url.searchParams.get('raio') || '200', 10), 1), 1000)
+  const lat = parseCoordinate(url.searchParams.get('lat'), -90, 90)
+  const lon = parseCoordinate(url.searchParams.get('lon'), -180, 180)
+  const raio = boundedRadius(url.searchParams.get('raio'))
+
+  if (lat === null || lon === null) {
+    return NextResponse.json({
+      focos: [],
+      total: 0,
+      raio,
+      referencia: null,
+      cached: false,
+      offline: false,
+      error: 'invalid-location',
+      dataQuality: 'unavailable',
+      message: 'Latitude e longitude válidas são obrigatórias. Nenhuma cidade padrão é assumida.',
+      fetchedAt: new Date().toISOString(),
+      source: 'Programa Queimadas / INPE',
+      sourceUrl: SOURCE_URL,
+    }, { status: 400 })
+  }
 
   try {
-    const indexController = new AbortController()
-    const indexTimeout = setTimeout(() => indexController.abort(), 6000)
-    const indexResponse = await fetch(INDEX_URL, {
-      signal: indexController.signal,
-      cache: 'no-store',
-      headers: { Accept: 'text/html' },
-    })
-    clearTimeout(indexTimeout)
-
-    if (!indexResponse.ok) throw new Error(`INPE index HTTP ${indexResponse.status}`)
-    const indexHtml = await indexResponse.text()
+    const indexHtml = await fetchText(INDEX_URL, 6000, 'text/html')
     const filenames = [...indexHtml.matchAll(/href=["']?(focos_10min_\d{8}_\d{4}\.csv)["']?/g)]
       .map((match) => match[1])
       .filter((value, index, all) => all.indexOf(value) === index)
@@ -125,21 +161,14 @@ export async function GET(request: Request) {
 
     if (!filenames.length) throw new Error('INPE: nenhum CSV recente encontrado')
 
-    const csvResults = await Promise.allSettled(filenames.map(async (filename) => {
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 5000)
-      try {
-        const response = await fetch(`${INDEX_URL}${filename}`, {
-          signal: controller.signal,
-          cache: 'no-store',
-          headers: { Accept: 'text/csv,text/plain;q=0.9,*/*;q=0.1' },
-        })
-        if (!response.ok) throw new Error(`HTTP ${response.status}`)
-        return { filename, csv: await response.text() }
-      } finally {
-        clearTimeout(timeout)
-      }
-    }))
+    const csvResults = await Promise.allSettled(filenames.map(async (filename) => ({
+      filename,
+      csv: await fetchText(
+        `${INDEX_URL}${filename}`,
+        5000,
+        'text/csv,text/plain;q=0.9,*/*;q=0.1'
+      ),
+    })))
 
     const seen = new Set<string>()
     const focos: FocoQueimada[] = []
@@ -192,7 +221,7 @@ export async function GET(request: Request) {
       sourceUrl: SOURCE_URL,
       filesUsed: csvResults.filter((result) => result.status === 'fulfilled').length,
     })
-  } catch (error) {
+  } catch {
     return NextResponse.json({
       focos: [],
       total: 0,
