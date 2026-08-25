@@ -30,12 +30,7 @@ const CELESTRAK_GROUPS: Record<string, string> = {
   gnss: 'GPS-OPS',
 }
 
-interface CelesTrakOmm extends OMMJsonObject {
-  OBJECT_NAME?: string
-  OBJECT_ID?: string
-  NORAD_CAT_ID?: number | string
-  EPOCH?: string
-}
+type CelesTrakOmm = OMMJsonObject
 
 interface ComputedSatellite {
   name: string
