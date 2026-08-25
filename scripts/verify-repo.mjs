@@ -204,11 +204,14 @@ forbid('src/lib/readiness-state.ts', readiness, [
 ])
 
 const page = requireFragments('src/app/page.tsx', [
+  'AUSSY · SISTEMA DE SEGURANÇA',
+  'Toque para emergência',
+  'QR localização',
   'Aguardando localização válida',
   'O Aussy não assume uma cidade padrão',
-  'Offline-first',
-  'Última cópia válida em cache',
   "<EmergencySOS observerLat={point?.lat} observerLon={point?.lon} />",
+  '<QuickShare initialPoint={point} />',
+  '<QrLocation open={qrLocOpen} onOpenChange={setQrLocOpen} initialPoint={point} />',
   'Aussy Ontech combina recursos locais, fontes externas e cache de última resposta válida',
   'Não substitui serviços oficiais de emergência',
   'AIX8C - Uma tecnologia do grupo volponi.tech !',
@@ -233,4 +236,4 @@ if (failures.length) {
   process.exit(1)
 }
 
-console.log('Aussy repository invariants OK — V1 home, SW v9, official CEMADEN portals, CVV 188, offline resilience and trust gates are aligned')
+console.log('Aussy repository invariants OK — current home, SW v9, official CEMADEN portals, CVV 188, offline resilience and trust gates are aligned')
