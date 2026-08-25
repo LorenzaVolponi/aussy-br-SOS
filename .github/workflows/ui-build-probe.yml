@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - feat/volponi-clean-home
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
