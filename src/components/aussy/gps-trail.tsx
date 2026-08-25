@@ -12,7 +12,6 @@ import {
   X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from 'sonner'
 import { useGeolocation } from '@/hooks/use-geolocation'
@@ -53,7 +52,6 @@ async function listTrail(): Promise<TrailPoint[]> {
     const req = tx.objectStore(STORE).getAll()
     req.onsuccess = () => {
       const all = (req.result as TrailPoint[]) || []
-      // Ordena por timestamp DESC (mais novo primeiro)
       all.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       resolve(all)
     }
@@ -61,11 +59,11 @@ async function listTrail(): Promise<TrailPoint[]> {
   })
 }
 
-async function savePoint(p: TrailPoint): Promise<void> {
+async function savePoint(point: TrailPoint): Promise<void> {
   const db = await openDb()
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite')
-    tx.objectStore(STORE).put(p)
+    tx.objectStore(STORE).put(point)
     tx.oncomplete = () => resolve()
     tx.onerror = () => reject(tx.error)
   })
@@ -91,11 +89,23 @@ async function clearTrail(): Promise<void> {
   })
 }
 
+async function enforceTrailLimit(): Promise<void> {
+  const all = await listTrail()
+  const overflow = all.slice(MAX_POINTS)
+  await Promise.all(overflow.map((point) => deletePoint(point.id)))
+}
+
+function sourceLabel(source: string): string {
+  if (source === 'gps') return 'GPS'
+  if (source === 'ip') return 'IP aproximado'
+  if (source === 'cached') return 'CACHE'
+  if (source === 'manual') return 'MANUAL'
+  return source
+}
+
 /**
- * Trilha GPS — salva posições no aparelho (IndexedDB) para equipes de resgate.
- * Útil em situações de caminhada/trilha/off-road onde você pode se perder.
- * Cada ponto mostra: coordenadas, precisão, horário e label opcional.
- * Pode exportar como texto/Google Maps URL ou compartilhar.
+ * Trilha de posições — salva no aparelho (IndexedDB) para consulta local.
+ * A proveniência de cada ponto é preservada: GPS, IP, cache ou manual.
  */
 export function GpsTrail() {
   const [trail, setTrail] = useState<TrailPoint[]>([])
@@ -109,128 +119,145 @@ export function GpsTrail() {
     try {
       const list = await listTrail()
       setTrail(list)
-    } catch (e) {
-      console.error('Erro carregando trilha:', e)
+    } catch (error) {
+      console.error('Erro carregando trilha:', error)
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    refresh()
+    void refresh()
   }, [])
 
+  const resolveCurrentPoint = async () => {
+    if (point) return point
+    return await detect(true)
+  }
+
   const handleSaveCurrent = async () => {
-    let p = point
-    if (!p) {
-      setSaving(true)
-      try {
-        await detect(true)
-        return // o useEffect do useGeolocation vai atualizar point; usuário clica de novo
-      } catch (e) {
-        toast.error('Não foi possível obter GPS')
-        return
-      } finally {
-        setSaving(false)
-      }
-    }
-    if (!p) {
-      toast.error('GPS indisponível')
-      return
-    }
-    const newPoint: TrailPoint = {
-      id: `trail-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      lat: p.lat,
-      lon: p.lon,
-      accuracy: p.accuracy,
-      source: p.source,
-      timestamp: new Date().toISOString(),
-    }
+    setSaving(true)
     try {
+      const current = await resolveCurrentPoint()
+      if (!current) {
+        toast.error('Não foi possível obter uma localização válida', {
+          description: 'Autorize o GPS ou tente novamente quando houver rede/posição salva.',
+        })
+        return
+      }
+
+      const newPoint: TrailPoint = {
+        id: `trail-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        lat: current.lat,
+        lon: current.lon,
+        accuracy: current.accuracy,
+        source: current.source,
+        timestamp: new Date().toISOString(),
+      }
+
       await savePoint(newPoint)
+      await enforceTrailLimit()
       toast.success('Posição salva na trilha', {
-        description: `${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}`,
+        description: `${current.lat.toFixed(5)}, ${current.lon.toFixed(5)} · ${sourceLabel(current.source)}`,
       })
-      refresh()
-    } catch (e) {
+      await refresh()
+    } catch {
       toast.error('Erro ao salvar posição')
+    } finally {
+      setSaving(false)
     }
   }
 
   const handleSaveWithLabel = async (id?: string) => {
-    if (!label.trim()) {
+    const cleanLabel = label.trim()
+    if (!cleanLabel) {
       toast.error('Digite um nome para o ponto')
       return
     }
-    // Se id foi passado, atualiza; senão, cria novo com label
+
     if (id) {
-      const existing = trail.find((t) => t.id === id)
+      const existing = trail.find((trailPoint) => trailPoint.id === id)
       if (existing) {
-        await savePoint({ ...existing, label: label.trim() })
-        toast.success('Ponto renomeado')
-        setShowLabelInput(null)
-        setLabel('')
-        refresh()
+        try {
+          await savePoint({ ...existing, label: cleanLabel })
+          toast.success('Ponto renomeado')
+          setShowLabelInput(null)
+          setLabel('')
+          await refresh()
+        } catch {
+          toast.error('Erro ao renomear ponto')
+        }
         return
       }
     }
-    // Novo ponto com label
-    let p = point
-    if (!p) {
-      try {
-        await detect(true)
-      } catch (e) {
-        toast.error('GPS indisponível')
+
+    setSaving(true)
+    try {
+      const current = await resolveCurrentPoint()
+      if (!current) {
+        toast.error('Não foi possível obter uma localização válida')
         return
       }
+
+      const newPoint: TrailPoint = {
+        id: `trail-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        lat: current.lat,
+        lon: current.lon,
+        accuracy: current.accuracy,
+        source: current.source,
+        label: cleanLabel,
+        timestamp: new Date().toISOString(),
+      }
+
+      await savePoint(newPoint)
+      await enforceTrailLimit()
+      toast.success(`Ponto "${cleanLabel}" salvo`, {
+        description: `${sourceLabel(current.source)} · ${current.lat.toFixed(5)}, ${current.lon.toFixed(5)}`,
+      })
+      setShowLabelInput(null)
+      setLabel('')
+      await refresh()
+    } catch {
+      toast.error('Erro ao salvar waypoint')
+    } finally {
+      setSaving(false)
     }
-    if (!point) {
-      toast.error('Aguardando GPS — tente novamente')
-      return
-    }
-    const newPoint: TrailPoint = {
-      id: `trail-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      lat: point.lat,
-      lon: point.lon,
-      accuracy: point.accuracy,
-      source: point.source,
-      label: label.trim(),
-      timestamp: new Date().toISOString(),
-    }
-    await savePoint(newPoint)
-    toast.success(`Ponto "${label}" salvo`)
-    setShowLabelInput(null)
-    setLabel('')
-    refresh()
   }
 
   const handleDelete = async (id: string) => {
-    await deletePoint(id)
-    toast.success('Ponto removido')
-    refresh()
+    try {
+      await deletePoint(id)
+      toast.success('Ponto removido')
+      await refresh()
+    } catch {
+      toast.error('Erro ao remover ponto')
+    }
   }
 
   const handleClearAll = async () => {
     if (!confirm(`Apagar todos os ${trail.length} pontos da trilha?`)) return
-    await clearTrail()
-    toast.success('Trilha limpa')
-    refresh()
+    try {
+      await clearTrail()
+      toast.success('Trilha limpa')
+      await refresh()
+    } catch {
+      toast.error('Erro ao limpar trilha')
+    }
   }
 
-  const handleSharePoint = async (p: TrailPoint) => {
-    const text = `📍 ${p.label ? p.label + ' — ' : ''}Aussy Ontech
-${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}
-Salvo em ${new Date(p.timestamp).toLocaleString('pt-BR')}
-https://maps.google.com/?q=${p.lat},${p.lon}`
+  const handleSharePoint = async (trailPoint: TrailPoint) => {
+    const text = `📍 ${trailPoint.label ? `${trailPoint.label} — ` : ''}Aussy Ontech\n${trailPoint.lat.toFixed(6)}, ${trailPoint.lon.toFixed(6)}\nOrigem: ${sourceLabel(trailPoint.source)}\nSalvo em ${new Date(trailPoint.timestamp).toLocaleString('pt-BR')}\nhttps://maps.google.com/?q=${trailPoint.lat},${trailPoint.lon}`
     if (navigator.share) {
       try {
-        await navigator.share({ title: 'Aussy Ontech — Ponto GPS', text })
-      } catch (e) {}
+        await navigator.share({ title: 'Aussy Ontech — Ponto de localização', text })
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+      }
     } else {
       try {
         await navigator.clipboard.writeText(text)
         toast.success('Copiado!')
-      } catch (e) {
+      } catch {
         toast.error('Falha ao copiar')
       }
     }
@@ -241,25 +268,26 @@ https://maps.google.com/?q=${p.lat},${p.lon}`
       toast.error('Trilha vazia')
       return
     }
-    const lines = trail.slice().reverse().map((p, i) => {
-      const time = new Date(p.timestamp).toLocaleString('pt-BR')
-      return `${i + 1}. ${p.label ? p.label + ' — ' : ''}${p.lat.toFixed(6)}, ${p.lon.toFixed(6)} (${p.source}, ${time})\n   https://maps.google.com/?q=${p.lat},${p.lon}`
+    const lines = trail.slice().reverse().map((trailPoint, index) => {
+      const time = new Date(trailPoint.timestamp).toLocaleString('pt-BR')
+      return `${index + 1}. ${trailPoint.label ? `${trailPoint.label} — ` : ''}${trailPoint.lat.toFixed(6)}, ${trailPoint.lon.toFixed(6)} (${sourceLabel(trailPoint.source)}, ${time})\n   https://maps.google.com/?q=${trailPoint.lat},${trailPoint.lon}`
     })
-    const text = `Aussy Ontech — Trilha GPS\n${trail.length} pontos salvos\n\n${lines.join('\n\n')}`
+    const text = `Aussy Ontech — Trilha de posições\n${trail.length} pontos salvos\n\n${lines.join('\n\n')}`
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `trilha-gps-${new Date().toISOString().slice(0, 10)}.txt`
-    a.click()
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `trilha-gps-${new Date().toISOString().slice(0, 10)}.txt`
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
     URL.revokeObjectURL(url)
     toast.success('Trilha exportada como .txt')
   }
 
   const formatTime = (iso: string) => {
-    const d = new Date(iso)
-    const now = new Date()
-    const diffMs = now.getTime() - d.getTime()
+    const date = new Date(iso)
+    const diffMs = Date.now() - date.getTime()
     const diffMin = Math.floor(diffMs / 60000)
     const diffH = Math.floor(diffMin / 60)
     const diffD = Math.floor(diffH / 24)
@@ -285,7 +313,7 @@ https://maps.google.com/?q=${p.lat},${p.lon}`
               </Button>
             )}
             {trail.length > 0 && (
-              <Button onClick={handleClearAll} size="sm" variant="ghost" className="h-7 text-xs text-red-400 hover:bg-red-500/10">
+              <Button onClick={handleClearAll} size="sm" variant="ghost" className="h-7 text-xs text-red-400 hover:bg-red-500/10" aria-label="Limpar trilha">
                 <Trash2 className="h-3 w-3" />
               </Button>
             )}
@@ -293,7 +321,6 @@ https://maps.google.com/?q=${p.lat},${p.lon}`
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        {/* Salvar posição atual */}
         <div className="space-y-2">
           <Button
             onClick={handleSaveCurrent}
@@ -302,25 +329,30 @@ https://maps.google.com/?q=${p.lat},${p.lon}`
             size="sm"
           >
             <Plus className="h-4 w-4 mr-1.5" />
-            Salvar minha posição atual
+            {saving || geoLoading ? 'Obtendo e salvando posição...' : 'Salvar minha posição atual'}
           </Button>
 
-          {/* Input de label opcional */}
           {showLabelInput === 'new' ? (
             <div className="flex gap-1">
               <input
                 type="text"
                 value={label}
-                onChange={(e) => setLabel(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleSaveWithLabel())}
+                onChange={(event) => setLabel(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    void handleSaveWithLabel()
+                  }
+                }}
                 placeholder="Nome do ponto (ex: acampamento, rio)"
                 className="flex-1 h-8 px-2 text-xs rounded-md border border-input bg-background"
                 autoFocus
+                disabled={saving || geoLoading}
               />
-              <Button onClick={() => handleSaveWithLabel()} size="sm" className="h-8">
+              <Button onClick={() => void handleSaveWithLabel()} size="sm" className="h-8" disabled={saving || geoLoading}>
                 Salvar
               </Button>
-              <Button onClick={() => { setShowLabelInput(null); setLabel('') }} size="sm" variant="ghost" className="h-8">
+              <Button onClick={() => { setShowLabelInput(null); setLabel('') }} size="sm" variant="ghost" className="h-8" disabled={saving}>
                 <X className="h-3 w-3" />
               </Button>
             </div>
@@ -336,67 +368,66 @@ https://maps.google.com/?q=${p.lat},${p.lon}`
           )}
         </div>
 
-        {/* Lista de pontos */}
         {loading ? (
           <div className="text-xs text-muted-foreground text-center py-3">Carregando...</div>
         ) : trail.length === 0 ? (
           <div className="text-center py-4 px-3">
             <MapPin className="h-6 w-6 text-muted-foreground/50 mx-auto mb-2" />
             <p className="text-xs text-muted-foreground">
-              Nenhum ponto salvo. Salve posições para resgate ou para encontrar o caminho de volta.
+              Nenhum ponto salvo. Salve posições para consulta local ou para compartilhar com uma equipe de resgate.
             </p>
           </div>
         ) : (
           <div className="space-y-1.5 max-h-72 overflow-y-auto">
-            {trail.map((p, i) => (
+            {trail.map((trailPoint, index) => (
               <div
-                key={p.id}
+                key={trailPoint.id}
                 className={`p-2 rounded-lg border ${
-                  p.label
+                  trailPoint.label
                     ? 'border-orbit/40 bg-orbit/10'
                     : 'border-border/40 bg-background/40'
                 }`}
               >
                 <div className="flex items-start gap-2">
                   <div className="flex-shrink-0 w-7 h-7 rounded-full bg-orbit/20 border border-orbit/40 flex items-center justify-center">
-                    <span className="text-[10px] font-mono-jet text-orbit">{trail.length - i}</span>
+                    <span className="text-[10px] font-mono-jet text-orbit">{trail.length - index}</span>
                   </div>
                   <div className="flex-1 min-w-0">
-                    {p.label ? (
-                      <div className="font-medium text-xs truncate">{p.label}</div>
-                    ) : null}
+                    {trailPoint.label ? <div className="font-medium text-xs truncate">{trailPoint.label}</div> : null}
                     <div className="text-[11px] font-mono-jet text-muted-foreground truncate">
-                      {p.lat.toFixed(5)}, {p.lon.toFixed(5)}
+                      {trailPoint.lat.toFixed(5)}, {trailPoint.lon.toFixed(5)}
                     </div>
                     <div className="flex items-center gap-2 text-[10px] text-muted-foreground/70 mt-0.5">
                       <span className="flex items-center gap-0.5">
                         <Clock className="h-2.5 w-2.5" />
-                        {formatTime(p.timestamp)}
+                        {formatTime(trailPoint.timestamp)}
                       </span>
                       <span>·</span>
-                      <span>{p.source === 'gps' ? 'GPS' : p.source === 'ip' ? 'IP' : 'manual'}</span>
-                      {p.accuracy && (
+                      <span>{sourceLabel(trailPoint.source)}</span>
+                      {trailPoint.accuracy != null && (
                         <>
                           <span>·</span>
-                          <span>±{Math.round(p.accuracy)}m</span>
+                          <span>±{Math.round(trailPoint.accuracy)}m</span>
                         </>
                       )}
                     </div>
                   </div>
                   <div className="flex items-center gap-0.5 flex-shrink-0">
                     <Button
-                      onClick={() => handleSharePoint(p)}
+                      onClick={() => void handleSharePoint(trailPoint)}
                       size="sm"
                       variant="ghost"
                       className="h-7 w-7 p-0 text-signal hover:bg-signal/10"
+                      aria-label="Compartilhar ponto"
                     >
                       <Share2 className="h-3 w-3" />
                     </Button>
                     <Button
-                      onClick={() => handleDelete(p.id)}
+                      onClick={() => void handleDelete(trailPoint.id)}
                       size="sm"
                       variant="ghost"
                       className="h-7 w-7 p-0 text-red-400 hover:bg-red-500/10"
+                      aria-label="Remover ponto"
                     >
                       <Trash2 className="h-3 w-3" />
                     </Button>
@@ -408,7 +439,7 @@ https://maps.google.com/?q=${p.lat},${p.lon}`
         )}
 
         <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
-          💾 {trail.length}/{MAX_POINTS} posições salvas no aparelho. Permite resgate mesmo sem sinal — mostre a lista à equipe.
+          💾 {trail.length}/{MAX_POINTS} posições mantidas no aparelho. A lista continua consultável sem rede; abrir links ou compartilhar por apps externos depende dos recursos disponíveis no dispositivo.
         </p>
       </CardContent>
     </Card>

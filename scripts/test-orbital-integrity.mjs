@@ -26,12 +26,17 @@ const swPath = 'public/sw.js'
 const route = await read(routePath)
 requireFragments(routePath, route, [
   "dataQuality: 'observer-required'",
-  'Nenhuma posição orbital foi calculada',
-  'nenhuma cidade padrão é assumida',
+  'Nenhuma cidade padrão é assumida',
   "dataQuality: 'live-tle-approx-position'",
-  "propagation: 'aproximação visual — não SGP4'",
+  "orbitalDataFormat: 'OMM JSON'",
+  "propagation: 'SGP4/SDP4 via satellite.js'",
+  'json2satrec',
+  'propagate(satrec, date)',
+  'ecfToLookAngles',
   'tleAgeHours',
-  'Sem TLE real confirmado nesta resposta',
+  'CELESTRAK_CACHE_SECONDS = 2 * 60 * 60',
+  'next: { revalidate: CELESTRAK_CACHE_SECONDS }',
+  'Nenhuma posição sintética é criada',
   '{ status: 503 }',
 ])
 forbidFragments(routePath, route, [
@@ -41,12 +46,16 @@ forbidFragments(routePath, route, [
   'CONSTELLATION_COUNTS',
   'newRaan',
   'Math.random',
+  'calculateApproxSubpoint',
+  'aproximação visual — não SGP4',
+  'FORMAT=TLE',
+  "cache: 'no-store'",
 ])
 
-const observerBlock = route.indexOf('if (obsLat === null || obsLon === null)')
-const upstreamFetch = route.indexOf('const response = await fetch(url')
+const observerBlock = route.indexOf('if (observerLat === null || observerLon === null)')
+const upstreamFetch = route.indexOf('const ommRecords = await fetchCelesTrakOmm(url)')
 if (observerBlock < 0 || upstreamFetch < 0 || observerBlock > upstreamFetch) {
-  failures.push(`${routePath} must short-circuit observer-less requests before the CelesTrak fetch`)
+  failures.push(`${routePath} must short-circuit observer-less requests before requesting CelesTrak data`)
 }
 
 const ui = await read(uiPath)
@@ -82,4 +91,4 @@ if (failures.length) {
   process.exit(1)
 }
 
-console.log('Orbital integrity gate OK — observer gating, cache provenance, TLE age and offline refresh semantics are protected')
+console.log('Orbital integrity gate OK — observer gating, OMM cache policy, SGP4 propagation, cache provenance and offline semantics are protected')

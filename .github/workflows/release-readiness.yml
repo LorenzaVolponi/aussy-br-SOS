@@ -9,16 +9,48 @@ permissions:
 jobs:
   readiness:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.14'
+
       - name: Runtime
-        run: node --version
+        run: |
+          node --version
+          bun --version
+          bun --revision
+
+      - name: Install frozen dependencies
+        run: |
+          test -f bun.lock
+          bun install --frozen-lockfile
 
       - name: Release blockers
         run: node scripts/release-readiness.mjs
 
       - name: Zero-dependency safety suite
         run: node scripts/run-safety-suite.mjs
+
+      - name: Type check
+        run: bun run type-check
+
+      - name: Critical lint
+        run: bun run lint:critical
+
+      - name: Production build
+        run: bun run build
+        env:
+          NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3000
+
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium webkit
+
+      - name: Mobile browser acceptance
+        run: bun run test:mobile
+        env:
+          NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3000

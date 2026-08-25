@@ -49,8 +49,11 @@ const packageJson = requireFragments('package.json', [
   '"test:inmet": "node scripts/test-inmet-integrity.mjs"',
   '"test:api": "node scripts/test-api-trust.mjs"',
   '"test:osm": "node scripts/test-osm-policy.mjs"',
+  '"next": "16.3.2"',
+  '"satellite.js": "7.1.0"',
 ])
 forbid('package.json', packageJson, ['npm install --force', '--legacy-peer-deps'])
+if (!existsSync(join(root, 'bun.lock'))) failures.push('bun.lock must be versioned')
 
 const quality = requireFragments('.github/workflows/quality.yml', [
   "bun-version: '1.3.14'",
@@ -58,13 +61,13 @@ const quality = requireFragments('.github/workflows/quality.yml', [
   'node scripts/test-inmet-integrity.mjs',
   'node scripts/test-api-trust.mjs',
   'node scripts/test-osm-policy.mjs',
-  'bun install',
+  'bun install --frozen-lockfile',
   'bun run verify:repo',
   'bun run type-check',
   'bun run lint',
   'bun run build',
 ])
-const installIndex = quality.indexOf('bun install')
+const installIndex = quality.indexOf('bun install --frozen-lockfile')
 for (const command of [
   'node scripts/test-sw-runtime.mjs',
   'node scripts/test-inmet-integrity.mjs',
@@ -76,6 +79,12 @@ for (const command of [
     failures.push(`quality workflow must run ${command} before dependency installation`)
   }
 }
+
+const vercel = requireFragments('vercel.json', [
+  '"installCommand": "bun install --frozen-lockfile"',
+  '"buildCommand": "bun run build"',
+])
+forbid('vercel.json', vercel, ['"installCommand": "bun install"'])
 
 for (const path of [
   'scripts/run-safety-suite.mjs',
@@ -95,6 +104,8 @@ for (const path of [
   'scripts/test-orbital-integrity.mjs',
   'scripts/test-emergency-precache.mjs',
   'scripts/test-client-surface.mjs',
+  'scripts/test-location-integrity.mjs',
+  'scripts/test-live-functional-smoke.mjs',
 ]) {
   if (!existsSync(join(root, path))) failures.push(`${path} missing`)
 }
@@ -192,13 +203,19 @@ forbid('src/app/api/emergency/contacts/route.ts', contacts, [
 ])
 
 const readiness = requireFragments('src/lib/readiness-state.ts', [
+  "verifiedAt: '2026-08-25'",
   'releaseReady: false',
-  "id: 'dependency-lock-missing'",
-  "id: 'full-build-not-executed'",
+  "id: 'functional-audit-pr-pending'",
+  "id: 'dependency-graph-frozen'",
+  "dependencyLock: 'bun-1.3.14-frozen'",
+  "weather: 'met-norway-live-model-or-last-known-good'",
+  "satelliteOrbit: 'celestrak-omm-sgp4-live-or-last-known-good'",
   "cemaden: 'official-portal-only'",
   "serviceWorkerSafetyEpoch: 'aussy-v9'",
 ])
 forbid('src/lib/readiness-state.ts', readiness, [
+  "id: 'dependency-lock-missing'",
+  "id: 'full-build-not-executed'",
   "id: 'service-worker-safety-epoch-v8'",
   "id: 'cemaden-undocumented-api-blocked'",
 ])
@@ -236,4 +253,4 @@ if (failures.length) {
   process.exit(1)
 }
 
-console.log('Aussy repository invariants OK — current home, SW v9, official CEMADEN portals, CVV 188, offline resilience and trust gates are aligned')
+console.log('Aussy repository invariants OK — frozen dependency graph, current home, SW v9, live-data trust boundaries and release gates are aligned')

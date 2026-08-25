@@ -9,7 +9,7 @@
     }
   },
   "buildCommand": "bun run build",
-  "installCommand": "bun install",
+  "installCommand": "bun install --frozen-lockfile",
   "headers": [
     {
       "source": "/sw.js",

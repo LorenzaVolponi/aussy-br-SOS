@@ -136,23 +136,18 @@ export function useDeviceCapabilities(): DeviceCapabilities {
     const isAndroid = /Android/.test(ua)
     const isMobile = isApple || isAndroid
 
-    const iphoneMatch = ua.match(/iPhone(\d+,\d+)/)
-    let isIphone14Plus = false
-    if (iphoneMatch) {
-      const [major, minor] = iphoneMatch[1].split(',').map(Number)
-      isIphone14Plus = major > 14 || (major === 14 && minor >= 7)
-    }
-
     setCaps({
       hasBluetooth: 'bluetooth' in navigator,
       hasGeolocation: 'geolocation' in navigator,
       hasServiceWorker: 'serviceWorker' in navigator,
       hasBackgroundSync: 'serviceWorker' in navigator && 'SyncManager' in window,
       hasPushManager: 'PushManager' in window,
+      // Navegadores não expõem uma API Web confiável para confirmar Cell Broadcast.
+      // Este campo indica apenas que o dispositivo parece móvel; a UI deixa isso explícito.
       hasCellBroadcast: isMobile,
-      hasSatelliteSos:
-        (isApple && isIphone14Plus) ||
-        (isAndroid && /S22|S23|S24|S25|Pixel 8|Pixel 9/.test(ua)),
+      // SOS via satélite é um recurso do sistema/dispositivo e não possui detecção Web
+      // confiável. Nunca marcamos compatibilidade com base em user-agent/modelo inferido.
+      hasSatelliteSos: false,
       userAgent: ua,
       platform: isApple ? 'ios' : isAndroid ? 'android' : 'desktop',
     })

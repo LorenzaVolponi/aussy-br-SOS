@@ -1,0 +1,67 @@
+name: Live Functional Smoke
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.14'
+
+      - name: Install frozen dependencies
+        run: |
+          test -f bun.lock
+          bun install --frozen-lockfile
+
+      - name: Build production app
+        run: bun run build
+        env:
+          NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3000
+
+      - name: Start production app
+        shell: bash
+        run: |
+          nohup bun run start > /tmp/aussy-next.log 2>&1 &
+          echo $! > /tmp/aussy-next.pid
+          for attempt in $(seq 1 40); do
+            if curl --fail --silent --show-error http://127.0.0.1:3000/api/health >/dev/null; then
+              echo "Aussy production server is ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/aussy-next.log || true
+          echo "Aussy production server did not become ready" >&2
+          exit 1
+
+      - name: Exercise live functional routes
+        run: node scripts/test-live-functional-smoke.mjs
+        env:
+          AUSSY_BASE_URL: http://127.0.0.1:3000
+
+      - name: Server diagnostics
+        if: always()
+        shell: bash
+        run: |
+          echo "## Live functional smoke" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: ${GITHUB_SHA}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Server log tail:" >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          tail -n 80 /tmp/aussy-next.log >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f /tmp/aussy-next.pid ]; then
+            kill "$(cat /tmp/aussy-next.pid)" 2>/dev/null || true
+          fi
