@@ -36,7 +36,7 @@ for (const required of [
   'PORTAL OFICIAL',
   'CEMADEN / MCTI — canais oficiais',
   'cemaden.portals.map',
-  'Lista vazia',
+  'cemaden.note',
   'Aguardando localização válida',
   'Nenhuma cidade padrão é assumida',
 ]) {
@@ -54,4 +54,4 @@ for (const forbidden of [
   assert.equal(ui.includes(forbidden), false, `unsafe CEMADEN/queimadas UI behavior returned: ${forbidden}`)
 }
 
-console.log('CEMADEN safety gate OK — undocumented automation removed, official portals explicit and no Brasilia fallback')
+console.log('CEMADEN safety gate OK — official portal contract is explicit, UI renders the API warning and no Brasilia fallback exists')
