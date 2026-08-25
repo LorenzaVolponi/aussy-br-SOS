@@ -1,0 +1,91 @@
+/* Volponi-aligned visual layer for Aussy.
+   Emergency red remains semantic; gold is the brand accent. */
+
+:root,
+.dark {
+  color-scheme: dark;
+  --primary: #d9a76a;
+  --primary-foreground: #0b0d0f;
+  --accent: #d9a76a;
+  --accent-foreground: #0b0d0f;
+  --ring: #d9a76a;
+  --signal: #d9a76a;
+  --orbit: #b8894c;
+  --alert: #d9a76a;
+  --chart-1: #d9a76a;
+  --chart-2: #b8894c;
+  --sidebar-primary: #d9a76a;
+  --sidebar-ring: #d9a76a;
+}
+
+.dark body {
+  background-image:
+    radial-gradient(circle at 76% 12%, rgb(217 167 106 / 0.035) 0%, transparent 28%),
+    radial-gradient(circle at 22% 78%, rgb(217 167 106 / 0.02) 0%, transparent 32%),
+    linear-gradient(180deg, #090b0d 0%, #080a0c 55%, #07090b 100%);
+}
+
+.light {
+  color-scheme: light;
+  --background: #f7f6f2;
+  --foreground: #111315;
+  --card: #ffffff;
+  --card-foreground: #111315;
+  --popover: #ffffff;
+  --popover-foreground: #111315;
+  --primary: #b8894c;
+  --primary-foreground: #ffffff;
+  --secondary: #eeece6;
+  --secondary-foreground: #17191b;
+  --muted: #ece9e2;
+  --muted-foreground: #6e6a63;
+  --accent: #d9a76a;
+  --accent-foreground: #111315;
+  --destructive: #c92c2c;
+  --border: rgb(20 22 24 / 0.13);
+  --input: rgb(20 22 24 / 0.09);
+  --ring: #b8894c;
+  --signal: #b8894c;
+  --orbit: #9e713c;
+  --alert: #b8894c;
+  --chart-1: #b8894c;
+  --chart-2: #8d6a43;
+  --chart-3: #74706a;
+  --chart-4: #c92c2c;
+  --chart-5: #41464c;
+  --sidebar: #f2f0ea;
+  --sidebar-foreground: #111315;
+  --sidebar-primary: #b8894c;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e8e5dd;
+  --sidebar-accent-foreground: #111315;
+  --sidebar-border: rgb(20 22 24 / 0.12);
+  --sidebar-ring: #b8894c;
+}
+
+.light body {
+  background-image:
+    radial-gradient(circle at 76% 12%, rgb(217 167 106 / 0.08) 0%, transparent 28%),
+    radial-gradient(circle at 18% 84%, rgb(217 167 106 / 0.045) 0%, transparent 34%),
+    linear-gradient(180deg, #fbfaf7 0%, #f7f6f2 58%, #f3f1ec 100%);
+}
+
+.light .glass-card {
+  background: rgb(255 255 255 / 0.78);
+  border-color: rgb(20 22 24 / 0.12);
+  box-shadow: 0 12px 30px rgb(20 22 24 / 0.06), inset 0 1px 0 rgb(255 255 255 / 0.85);
+}
+
+.light .glass-card-emergency {
+  background: rgb(201 44 44 / 0.055);
+  border-color: rgb(201 44 44 / 0.28);
+  box-shadow: 0 12px 30px rgb(201 44 44 / 0.06);
+}
+
+.light ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.light ::-webkit-scrollbar-thumb {
+  background: rgb(20 22 24 / 0.2);
+}
