@@ -23,6 +23,19 @@ interface QuakeEvent {
   tsunami: boolean
 }
 
+function parseCoordinate(value: string | null, min: number, max: number): number | null {
+  if (value === null || value.trim() === '') return null
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) return null
+  return parsed
+}
+
+function boundedNumber(value: string | null, fallback: number, min: number, max: number): number {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.min(Math.max(parsed, min), max)
+}
+
 function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371
   const dLat = ((lat2 - lat1) * Math.PI) / 180
@@ -42,48 +55,75 @@ function severityFromMag(magnitude: number): QuakeEvent['severity'] {
 
 export async function GET(req: NextRequest) {
   const searchParams = req.nextUrl.searchParams
-  const lat = parseFloat(searchParams.get('lat') || '-15.7801')
-  const lon = parseFloat(searchParams.get('lon') || '-47.9292')
-  const radius = Math.min(Math.max(parseFloat(searchParams.get('raio') || '500'), 1), 20000)
-  const minMag = Math.min(Math.max(parseFloat(searchParams.get('mag') || '2.5'), 0), 10)
-  const days = Math.min(Math.max(parseInt(searchParams.get('dias') || '7', 10), 1), 30)
+  const lat = parseCoordinate(searchParams.get('lat'), -90, 90)
+  const lon = parseCoordinate(searchParams.get('lon'), -180, 180)
+  const radius = boundedNumber(searchParams.get('raio'), 500, 1, 20000)
+  const minMag = boundedNumber(searchParams.get('mag'), 2.5, 0, 10)
+  const days = Math.round(boundedNumber(searchParams.get('dias'), 7, 1, 30))
+
+  if (lat === null || lon === null) {
+    return NextResponse.json({
+      source: 'USGS Earthquake Hazards Program',
+      sourceUrl: 'https://earthquake.usgs.gov',
+      queriedAt: new Date().toISOString(),
+      center: null,
+      minMagnitude: minMag,
+      periodDays: days,
+      total: 0,
+      events: [],
+      offline: false,
+      error: 'invalid-location',
+      dataQuality: 'unavailable',
+      note: 'Latitude e longitude válidas são obrigatórias. Nenhuma cidade padrão é assumida.',
+    }, { status: 400 })
+  }
 
   const startTime = new Date(Date.now() - days * 86400000).toISOString()
   const sourceUrl = `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=${encodeURIComponent(startTime)}&minmagnitude=${minMag}&orderby=time&limit=200`
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 7000)
 
   try {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 7000)
     const response = await fetch(sourceUrl, {
       signal: controller.signal,
       headers: { 'User-Agent': 'AussyOntech/1.0 (emergency PWA)' },
       cache: 'no-store',
     })
-    clearTimeout(timeout)
 
     if (!response.ok) throw new Error(`USGS HTTP ${response.status}`)
 
     const data = await response.json()
-    const features: any[] = Array.isArray(data?.features) ? data.features : []
+    const features: unknown[] = Array.isArray(data?.features) ? data.features : []
 
     const events: QuakeEvent[] = features
-      .map((feature: any): QuakeEvent | null => {
-        const coordinates = feature?.geometry?.coordinates
+      .map((raw): QuakeEvent | null => {
+        const feature = raw as {
+          id?: unknown
+          geometry?: { coordinates?: unknown }
+          properties?: Record<string, unknown>
+        }
+        const coordinates = feature.geometry?.coordinates
         if (!Array.isArray(coordinates) || coordinates.length < 2) return null
-        const [eventLon, eventLat, depth] = coordinates
+
+        const eventLon = Number(coordinates[0])
+        const eventLat = Number(coordinates[1])
+        const depth = Number(coordinates[2] ?? 0)
         if (!Number.isFinite(eventLat) || !Number.isFinite(eventLon)) return null
+
+        const magnitude = Number(feature.properties?.mag ?? 0)
+        if (!Number.isFinite(magnitude)) return null
+
         const distance = haversine(lat, lon, eventLat, eventLon)
-        const magnitude = Number(feature?.properties?.mag ?? 0)
         return {
-          id: String(feature.id),
+          id: String(feature.id || ''),
           magnitude,
-          place: String(feature?.properties?.place || 'Local não informado'),
-          time: Number(feature?.properties?.time || 0),
-          url: String(feature?.properties?.url || 'https://earthquake.usgs.gov'),
-          coords: { lat: eventLat, lon: eventLon, depth: Number(depth || 0) },
+          place: String(feature.properties?.place || 'Local não informado'),
+          time: Number(feature.properties?.time || 0),
+          url: String(feature.properties?.url || 'https://earthquake.usgs.gov'),
+          coords: { lat: eventLat, lon: eventLon, depth: Number.isFinite(depth) ? depth : 0 },
           distanceKm: Math.round(distance),
           severity: severityFromMag(magnitude),
-          tsunami: Boolean(feature?.properties?.tsunami),
+          tsunami: Boolean(feature.properties?.tsunami),
         }
       })
       .filter((event): event is QuakeEvent => Boolean(event && (event.distanceKm ?? Infinity) <= radius))
@@ -119,5 +159,7 @@ export async function GET(req: NextRequest) {
       dataQuality: 'unavailable',
       note: 'Não foi possível confirmar eventos no USGS. Nenhum sismo histórico foi apresentado como evento atual.',
     }, { status: 503 })
+  } finally {
+    clearTimeout(timeout)
   }
 }
