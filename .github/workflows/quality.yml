@@ -26,6 +26,9 @@ jobs:
       - name: API trust tests
         run: node scripts/test-api-trust.mjs
 
+      - name: Location and weather integrity tests
+        run: node scripts/test-location-integrity.mjs
+
       - name: OSM tile policy tests
         run: node scripts/test-osm-policy.mjs
 
