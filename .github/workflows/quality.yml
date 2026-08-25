@@ -47,16 +47,10 @@ jobs:
           bun --revision
           echo "commit=${GITHUB_SHA}"
 
-      - name: Install dependencies
-        shell: bash
+      - name: Install frozen dependencies
         run: |
-          if [ -f bun.lock ]; then
-            echo "Using frozen bun.lock"
-            bun install --frozen-lockfile
-          else
-            echo "WARNING: bun.lock missing; install is not fully reproducible"
-            bun install
-          fi
+          test -f bun.lock
+          bun install --frozen-lockfile
 
       - name: Repository safety invariants
         run: bun run verify:repo
