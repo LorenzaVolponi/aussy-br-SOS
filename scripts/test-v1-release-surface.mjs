@@ -39,14 +39,16 @@ requireFragments(packagePath, packageJson, [
   '"test:mobile": "playwright test tests/mobile-v1.spec.ts"',
   '"lint:critical"',
   '"type-check": "tsc --noEmit"',
-  '"build": "next build"',
+  '"build": "next build --webpack"',
 ])
 
 const page = await read(pagePath)
 requireFragments(pagePath, page, [
-  'AUSSY · S.O.S. BRASIL',
-  'AUSSY <span className="text-red-500">ESTÁ</span> COM VOCÊ.',
-  'S.O.S. IMEDIATO',
+  'AUSSY · SISTEMA DE SEGURANÇA',
+  'ESTÁ COM VOCÊ',
+  'Toque para emergência',
+  'aria-label="Abrir emergência SOS"',
+  'QR localização',
   'Aguardando localização válida',
   "<EmergencySOS observerLat={point?.lat} observerLon={point?.lon} />",
   '<QuickShare initialPoint={point} />',
@@ -101,7 +103,8 @@ const mobileWorkflow = await read(mobileWorkflowPath)
 requireFragments(mobileWorkflowPath, mobileWorkflow, ['chromium webkit', 'bun run test:mobile', 'mobile-v1-playwright-report'])
 
 const lint = await read(lintPath)
-requireFragments(lintPath, lint, ['const criticalFiles', '"no-debugger": "error"', '"no-unreachable": "error"', '"@typescript-eslint/no-unused-vars": ["error"'])
+requireFragments(lintPath, lint, ['const criticalFiles', 'reportUnusedDisableDirectives', '"no-debugger": "error"', '"no-unreachable": "error"', '"@typescript-eslint/no-unused-vars": ["error"'])
+forbidFragments(lintPath, lint, ['"@typescript-eslint/no-unused-disable-directive"'])
 
 if (failures.length) {
   console.error('\nV1 release surface gate failed:\n')
