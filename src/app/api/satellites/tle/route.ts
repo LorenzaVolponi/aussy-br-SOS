@@ -151,14 +151,14 @@ export async function GET(request: Request) {
       observer: null,
       timestamp: new Date().toISOString(),
       source: 'CelesTrak / NORAD GP data',
-      dataQuality: 'unavailable',
+      dataQuality: 'observer-required',
       total: 0,
       visible: 0,
       satellites: [],
       cached: false,
       fallback: false,
-      error: 'invalid-location',
-      note: 'Latitude e longitude válidas são obrigatórias para calcular a aproximação relativa ao observador. Nenhuma cidade padrão é assumida.',
+      error: 'observer-required',
+      note: 'Latitude e longitude válidas são obrigatórias. Nenhuma posição orbital foi calculada e nenhuma cidade padrão é assumida.',
     }, { status: 400 })
   }
 
