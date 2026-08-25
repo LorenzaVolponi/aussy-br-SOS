@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import "./volponi-theme.css";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -77,15 +78,15 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#0a0e14" },
-    { media: "(prefers-color-scheme: light)", color: "#0a0e14" },
+    { media: "(prefers-color-scheme: dark)", color: "#090b0d" },
+    { media: "(prefers-color-scheme: light)", color: "#f7f6f2" },
   ],
   width: "device-width",
   initialScale: 1,
   maximumScale: 5,
   userScalable: true,
   viewportFit: "cover",
-  colorScheme: "dark",
+  colorScheme: "dark light",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -96,8 +97,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="Aussy Ontech" />
         <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="theme-color" content="#0a0e14" />
-        <meta name="msapplication-TileColor" content="#0a0e14" />
+        <meta name="msapplication-TileColor" content="#090b0d" />
         <meta name="geo.region" content="BR" />
         <meta name="geo.placename" content="Brasil" />
         <meta httpEquiv="Permissions-Policy" content="geolocation=(self), microphone=(), camera=(), accelerometer=(self), gyroscope=(self), magnetometer=(self), ambient-light-sensor=(self)" />
