@@ -9,7 +9,7 @@ test.describe('Aussy V1 mobile', () => {
   test('home renders critical actions without horizontal overflow', async ({ page }) => {
     await page.goto('/')
     await expect(page.getByText('AUSSY', { exact: true }).first()).toBeVisible()
-    await expect(page.getByText('TOQUE PARA EMERGÊNCIA', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Toque para emergência/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /Abrir emergência SOS/i })).toBeVisible()
 
     const dimensions = await page.evaluate(() => ({
@@ -29,6 +29,7 @@ test.describe('Aussy V1 mobile', () => {
   test('QR location opens and stays usable on mobile viewport', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: /QR localização/i }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
     await expect(page.getByText('QR Code da localização')).toBeVisible()
     await expect(page.getByRole('button', { name: /Atualizar GPS/i })).toBeVisible()
   })
