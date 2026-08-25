@@ -38,7 +38,10 @@ const forbiddenDefaults = [
   "|| '-47.9292'",
   '?? -15.7801',
   '?? -47.9292',
-  '?? 0',
+  "lat') || '0'",
+  "lon') || '0'",
+  "latitude') || '0'",
+  "longitude') || '0'",
 ]
 
 for (const path of locationRoutes) {
@@ -65,8 +68,8 @@ const weather = read(weatherPath)
 requireFragments(weatherPath, weather, [
   'MET Norway Locationforecast 2.0',
   "'User-Agent': USER_AGENT",
-  "lat.toFixed(4)",
-  "lon.toFixed(4)",
+  'lat.toFixed(4)',
+  'lon.toFixed(4)',
   "dataQuality: 'live-model-forecast'",
   "dataQuality: 'unavailable'",
 ])
@@ -83,7 +86,7 @@ requireFragments(weatherUiPath, weatherUi, [
   "res.headers.get('X-Aussy-Cached')",
   "res.headers.get('X-Aussy-Offline')",
   "{cached ? 'CACHE' : 'AO VIVO'}",
-  "Fonte: {data.source",
+  'Fonte: {data.source',
 ])
 forbidFragments(weatherUiPath, weatherUi, [
   'Previsão do Tempo — CPTEC/INPE',
