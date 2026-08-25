@@ -36,6 +36,12 @@ function boundedNumber(value: string | null, fallback: number, min: number, max:
   return Math.min(Math.max(parsed, min), max)
 }
 
+function measuredNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
 function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371
   const dLat = ((lat2 - lat1) * Math.PI) / 180
@@ -103,24 +109,31 @@ export async function GET(req: NextRequest) {
           properties?: Record<string, unknown>
         }
         const coordinates = feature.geometry?.coordinates
-        if (!Array.isArray(coordinates) || coordinates.length < 2) return null
+        if (!Array.isArray(coordinates) || coordinates.length < 3) return null
 
-        const eventLon = Number(coordinates[0])
-        const eventLat = Number(coordinates[1])
-        const depth = Number(coordinates[2] ?? 0)
-        if (!Number.isFinite(eventLat) || !Number.isFinite(eventLon)) return null
+        const eventLon = measuredNumber(coordinates[0])
+        const eventLat = measuredNumber(coordinates[1])
+        const depth = measuredNumber(coordinates[2])
+        const magnitude = measuredNumber(feature.properties?.mag)
+        const eventTime = measuredNumber(feature.properties?.time)
+        const id = typeof feature.id === 'string' && feature.id.trim() ? feature.id : null
 
-        const magnitude = Number(feature.properties?.mag ?? 0)
-        if (!Number.isFinite(magnitude)) return null
+        if (
+          eventLat === null || eventLat < -90 || eventLat > 90 ||
+          eventLon === null || eventLon < -180 || eventLon > 180 ||
+          depth === null || magnitude === null || eventTime === null || !id
+        ) return null
 
         const distance = haversine(lat, lon, eventLat, eventLon)
         return {
-          id: String(feature.id || ''),
+          id,
           magnitude,
           place: String(feature.properties?.place || 'Local não informado'),
-          time: Number(feature.properties?.time || 0),
-          url: String(feature.properties?.url || 'https://earthquake.usgs.gov'),
-          coords: { lat: eventLat, lon: eventLon, depth: Number.isFinite(depth) ? depth : 0 },
+          time: eventTime,
+          url: typeof feature.properties?.url === 'string' && feature.properties.url
+            ? feature.properties.url
+            : 'https://earthquake.usgs.gov',
+          coords: { lat: eventLat, lon: eventLon, depth },
           distanceKm: Math.round(distance),
           severity: severityFromMag(magnitude),
           tsunami: Boolean(feature.properties?.tsunami),
