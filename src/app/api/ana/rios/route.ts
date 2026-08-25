@@ -34,6 +34,8 @@ interface EstacaoFluviometrica extends EstacaoReferencia {
   distancia: number
 }
 
+const OFFICIAL_API = 'https://www.snirh.gov.br/hidrowebservice/swagger-ui/index.html'
+
 const ESTACOES_REFERENCIA: EstacaoReferencia[] = [
   { codigo: '14880000', nome: 'Manacapuru - Rio Solimões', rio: 'Solimões', uf: 'AM', lat: -3.3167, lon: -60.6167 },
   { codigo: '14910000', nome: 'Manaus - Rio Negro', rio: 'Negro', uf: 'AM', lat: -3.1167, lon: -60.05 },
@@ -53,6 +55,13 @@ const ESTACOES_REFERENCIA: EstacaoReferencia[] = [
   { codigo: '35490000', nome: 'Recife - Rio Capibaribe', rio: 'Capibaribe', uf: 'PE', lat: -8.0476, lon: -34.877 },
 ]
 
+function parseCoordinate(value: string | null, min: number, max: number): number | null {
+  if (value === null || value.trim() === '') return null
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) return null
+  return parsed
+}
+
 function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371
   const toRad = (degrees: number) => (degrees * Math.PI) / 180
@@ -65,9 +74,24 @@ function haversine(lat1: number, lon1: number, lat2: number, lon2: number): numb
 
 export async function GET(request: Request) {
   const url = new URL(request.url)
-  const lat = parseFloat(url.searchParams.get('lat') || '-15.7801')
-  const lon = parseFloat(url.searchParams.get('lon') || '-47.9292')
-  const raio = Math.min(Math.max(parseFloat(url.searchParams.get('raio') || '500'), 1), 2000)
+  const lat = parseCoordinate(url.searchParams.get('lat'), -90, 90)
+  const lon = parseCoordinate(url.searchParams.get('lon'), -180, 180)
+  const raioRaw = Number(url.searchParams.get('raio') || '500')
+  const raio = Number.isFinite(raioRaw) ? Math.min(Math.max(raioRaw, 1), 2000) : 500
+
+  if (lat === null || lon === null) {
+    return NextResponse.json({
+      online: false,
+      dataQuality: 'unavailable',
+      fonte: 'ANA / SNIRH',
+      total: 0,
+      estacoes: [],
+      atualizado_em: null,
+      error: 'invalid-location',
+      officialApi: OFFICIAL_API,
+      aviso: 'Latitude e longitude válidas são obrigatórias. Nenhuma cidade padrão é assumida.',
+    }, { status: 400 })
+  }
 
   const estacoes: EstacaoFluviometrica[] = ESTACOES_REFERENCIA
     .map((estacao) => ({
@@ -86,10 +110,11 @@ export async function GET(request: Request) {
     dataQuality: 'reference-location-only',
     verifiedAt: '2026-08-17',
     fonte: 'Referência local de estações — não é telemetria ANA em tempo real',
+    referencia: { lat, lon, raioKm: raio },
     total: estacoes.length,
     estacoes,
     atualizado_em: null,
-    officialApi: 'https://www.snirh.gov.br/hidrowebservice/swagger-ui/index.html',
+    officialApi: OFFICIAL_API,
     aviso: 'Níveis e tendências foram desativados nesta build. Dados hidrológicos automatizados em tempo real exigem integração oficial/autenticada com o HidroWebservice da ANA.',
   })
 }
