@@ -1,151 +1,286 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 /**
- * API: CPTEC/INPE — previsão do tempo para uma cidade.
+ * Previsão meteorológica operacional por coordenadas.
  *
- * Regra de segurança: sem resposta confirmada do CPTEC, NÃO produzimos
- * temperatura, chuva, umidade ou condição sintética. O Service Worker pode
- * servir a última previsão real cacheada; sem cache, o cliente recebe
- * `days: []` + estado indisponível.
+ * O caminho `/api/cptec/forecast` é mantido por compatibilidade com o cliente e
+ * com o Service Worker. A previsão é obtida do MET Norway Locationforecast 2.0,
+ * serviço global que exige latitude/longitude reais e identificação do cliente.
+ *
+ * Regras de integridade:
+ * - latitude/longitude são obrigatórias; nunca existe cidade padrão;
+ * - campos ausentes permanecem `null`; nunca viram 0°C/0% artificialmente;
+ * - os cartões representam janelas móveis de 24h, evitando inventar um fuso;
+ * - falha do upstream retorna 503/unavailable para permitir last-known-good no SW.
  */
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-export const revalidate = 3600
+export const revalidate = 1800
+
+const FORECAST_URL = 'https://api.met.no/weatherapi/locationforecast/2.0/compact'
+const SOURCE_URL = 'https://api.met.no/weatherapi/locationforecast/2.0/documentation'
+const USER_AGENT = 'AussyOntech/1.0 (+https://github.com/LorenzaVolponi/aussy-br-SOS)'
+const DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+const HOUR_MS = 60 * 60 * 1000
+const DAY_MS = 24 * HOUR_MS
 
 interface ForecastDay {
   date: string
   dayOfWeek: string
+  periodLabel: string
   condition: string
   conditionLabel: string
-  min: number
-  max: number
+  min: number | null
+  max: number | null
   icon: string
-  wind: string
-  humidity: number
-  rainProbability?: number
+  wind: string | null
+  humidity: number | null
+  rainProbability: number | null
 }
 
-const CONDITIONS: Record<string, string> = {
-  ec: 'Encoberto com Chuvas',
-  ci: 'Chuvas Isoladas',
-  c: 'Chuva',
-  in: 'Instável',
-  pp: 'Poss.de Pancadas',
-  cm: 'Chuva pela Manhã',
-  cn: 'Chuva a Noite',
-  pt: 'Pancadas a Tarde',
-  pm: 'Pancadas pela Manhã',
-  np: 'Nublado e Pancadas',
-  pc: 'Pancadas de Chuva',
-  hn: 'Chuva a Noite',
-  n: 'Nublado',
-  cl: 'Céu Claro',
-  nv: 'Nevoeiro',
-  g: 'Geada',
-  ne: 'Neve',
-  nd: 'Não Definido',
-  pnt: 'Pancadas a Noite',
-  ps: 'Pancadas pela Manhã',
-  qa: 'Chuva a Tarde',
-  ca: 'Chuva a Manhã',
-  cv: 'Chuva a Noite',
-  ct: 'Chuva a Tarde',
-  ppn: 'Poss.panc.noite',
-  ppt: 'Poss.panc.tarde',
-  ppm: 'Poss.panc.manha',
+interface MetSeriesEntry {
+  time?: string
+  data?: {
+    instant?: { details?: Record<string, unknown> }
+    next_1_hours?: {
+      summary?: { symbol_code?: string }
+      details?: Record<string, unknown>
+    }
+    next_6_hours?: {
+      summary?: { symbol_code?: string }
+      details?: Record<string, unknown>
+    }
+  }
 }
 
-const CONDITION_ICONS: Record<string, string> = {
-  ec: '🌧️', ci: '🌦️', c: '🌧️', in: '⛈️', pp: '🌦️', cm: '🌧️',
-  cn: '🌧️', pt: '🌦️', pm: '🌦️', np: '☁️', pc: '🌧️', hn: '🌧️',
-  n: '☁️', cl: '☀️', nv: '🌫️', g: '❄️', ne: '❄️', nd: '❓',
-  pnt: '🌧️', ps: '🌦️', qa: '🌧️', ca: '🌧️', cv: '🌧️', ct: '🌧️',
-  ppn: '🌧️', ppt: '🌦️', ppm: '🌦️',
+const MET_CONDITIONS: Record<string, { label: string; icon: string }> = {
+  clearsky: { label: 'Céu claro', icon: '☀️' },
+  fair: { label: 'Poucas nuvens', icon: '🌤️' },
+  partlycloudy: { label: 'Parcialmente nublado', icon: '⛅' },
+  cloudy: { label: 'Nublado', icon: '☁️' },
+  fog: { label: 'Nevoeiro', icon: '🌫️' },
+  lightrainshowers: { label: 'Pancadas leves', icon: '🌦️' },
+  rainshowers: { label: 'Pancadas de chuva', icon: '🌦️' },
+  heavyrainshowers: { label: 'Pancadas fortes', icon: '🌧️' },
+  lightrain: { label: 'Chuva leve', icon: '🌧️' },
+  rain: { label: 'Chuva', icon: '🌧️' },
+  heavyrain: { label: 'Chuva forte', icon: '🌧️' },
+  rainshowersandthunder: { label: 'Pancadas e trovoadas', icon: '⛈️' },
+  lightrainshowersandthunder: { label: 'Pancadas leves e trovoadas', icon: '⛈️' },
+  heavyrainshowersandthunder: { label: 'Pancadas fortes e trovoadas', icon: '⛈️' },
+  rainandthunder: { label: 'Chuva e trovoadas', icon: '⛈️' },
+  lightrainandthunder: { label: 'Chuva leve e trovoadas', icon: '⛈️' },
+  heavyrainandthunder: { label: 'Chuva forte e trovoadas', icon: '⛈️' },
+  sleetshowers: { label: 'Pancadas de chuva e neve', icon: '🌨️' },
+  sleet: { label: 'Chuva e neve', icon: '🌨️' },
+  snowshowers: { label: 'Pancadas de neve', icon: '🌨️' },
+  snow: { label: 'Neve', icon: '❄️' },
 }
 
-const DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+function parseCoordinate(value: string | null, min: number, max: number): number | null {
+  if (value === null || value.trim() === '') return null
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) return null
+  return parsed
+}
+
+function numeric(value: unknown): number | null {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function normalizeSymbol(value: unknown): string {
+  return String(value || 'unknown')
+    .toLowerCase()
+    .replace(/_(day|night|polartwilight)$/i, '')
+}
+
+function dominantSymbol(entries: MetSeriesEntry[]): string {
+  const counts = new Map<string, number>()
+  for (const entry of entries) {
+    const raw =
+      entry.data?.next_1_hours?.summary?.symbol_code ||
+      entry.data?.next_6_hours?.summary?.symbol_code
+    if (!raw) continue
+    const symbol = normalizeSymbol(raw)
+    counts.set(symbol, (counts.get(symbol) || 0) + 1)
+  }
+
+  let winner = 'unknown'
+  let max = -1
+  for (const [symbol, count] of counts) {
+    if (count > max) {
+      winner = symbol
+      max = count
+    }
+  }
+  return winner
+}
+
+function average(values: number[]): number | null {
+  if (!values.length) return null
+  return values.reduce((sum, value) => sum + value, 0) / values.length
+}
+
+function rounded(value: number | null, digits = 0): number | null {
+  if (value === null) return null
+  const factor = 10 ** digits
+  return Math.round(value * factor) / factor
+}
+
+function buildRollingForecast(entries: MetSeriesEntry[]): ForecastDay[] {
+  const valid = entries
+    .filter((entry) => typeof entry.time === 'string' && Number.isFinite(Date.parse(entry.time)))
+    .sort((a, b) => Date.parse(a.time as string) - Date.parse(b.time as string))
+
+  if (!valid.length) return []
+
+  const now = Date.now()
+  const future = valid.filter((entry) => Date.parse(entry.time as string) >= now - 2 * HOUR_MS)
+  const series = future.length ? future : valid
+  const start = Date.parse(series[0].time as string)
+  const buckets: MetSeriesEntry[][] = [[], [], [], []]
+
+  for (const entry of series) {
+    const timestamp = Date.parse(entry.time as string)
+    const index = Math.floor((timestamp - start) / DAY_MS)
+    if (index < 0) continue
+    if (index > 3) break
+    buckets[index].push(entry)
+  }
+
+  return buckets.flatMap((bucket, index): ForecastDay[] => {
+    if (!bucket.length) return []
+
+    const temperatures: number[] = []
+    const humidities: number[] = []
+    const winds: number[] = []
+    const rainProbabilities: number[] = []
+
+    for (const entry of bucket) {
+      const details = entry.data?.instant?.details || {}
+      const temperature = numeric(details.air_temperature)
+      const humidity = numeric(details.relative_humidity)
+      const wind = numeric(details.wind_speed)
+      if (temperature !== null) temperatures.push(temperature)
+      if (humidity !== null) humidities.push(humidity)
+      if (wind !== null) winds.push(wind)
+
+      const oneHour = numeric(entry.data?.next_1_hours?.details?.probability_of_precipitation)
+      const sixHours = numeric(entry.data?.next_6_hours?.details?.probability_of_precipitation)
+      const rain = oneHour ?? sixHours
+      if (rain !== null) rainProbabilities.push(rain)
+    }
+
+    const firstTimestamp = bucket[0].time as string
+    const date = new Date(firstTimestamp)
+    const symbol = dominantSymbol(bucket)
+    const condition = MET_CONDITIONS[symbol] || {
+      label: symbol === 'unknown' ? 'Condição não informada' : symbol.replaceAll('_', ' '),
+      icon: '🌡️',
+    }
+    const maxWind = winds.length ? Math.max(...winds) : null
+
+    return [{
+      date: firstTimestamp,
+      dayOfWeek: DAY_NAMES[date.getUTCDay()] || '',
+      periodLabel: index === 0 ? 'Próximas 24h' : `${index * 24}–${(index + 1) * 24}h`,
+      condition: symbol.toUpperCase(),
+      conditionLabel: condition.label,
+      min: temperatures.length ? rounded(Math.min(...temperatures), 1) : null,
+      max: temperatures.length ? rounded(Math.max(...temperatures), 1) : null,
+      icon: condition.icon,
+      wind: maxWind === null ? null : `até ${rounded(maxWind, 1)} m/s`,
+      humidity: rounded(average(humidities)),
+      rainProbability: rainProbabilities.length ? rounded(Math.max(...rainProbabilities)) : null,
+    }]
+  })
+}
 
 export async function GET(req: NextRequest) {
   const searchParams = req.nextUrl.searchParams
-  const lat = parseFloat(searchParams.get('lat') || '-15.7801')
-  const lon = parseFloat(searchParams.get('lon') || '-47.9292')
+  const lat = parseCoordinate(searchParams.get('lat'), -90, 90)
+  const lon = parseCoordinate(searchParams.get('lon'), -180, 180)
+
+  if (lat === null || lon === null) {
+    return NextResponse.json({
+      source: 'MET Norway Locationforecast',
+      sourceUrl: SOURCE_URL,
+      queriedAt: new Date().toISOString(),
+      center: null,
+      city: null,
+      days: [],
+      total: 0,
+      offline: false,
+      error: 'invalid-location',
+      dataQuality: 'unavailable',
+      note: 'Latitude e longitude válidas são obrigatórias. Nenhuma cidade padrão é assumida.',
+    }, { status: 400 })
+  }
+
+  const upstream = new URL(FORECAST_URL)
+  upstream.searchParams.set('lat', lat.toFixed(4))
+  upstream.searchParams.set('lon', lon.toFixed(4))
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 6500)
 
   try {
-    const cityUrl = `https://servicos.cptec.inpe.br/API/v1/latitude/${lat.toFixed(4)}/${lon.toFixed(4)}`
-    const ctrl1 = new AbortController()
-    const t1 = setTimeout(() => ctrl1.abort(), 5000)
-    const cityRes = await fetch(cityUrl, { signal: ctrl1.signal, cache: 'no-store' })
-    clearTimeout(t1)
-
-    if (!cityRes.ok) throw new Error(`CPTEC city HTTP ${cityRes.status}`)
-
-    const cityData = await cityRes.json()
-    const cityId = cityData?.id
-    const cityName = cityData?.nome || 'Cidade desconhecida'
-    const uf = cityData?.uf || ''
-
-    if (!cityId) throw new Error('CPTEC: cidade não encontrada para estas coordenadas')
-
-    const forecastUrl = `https://servicos.cptec.inpe.br/API/cptec/v1/cidade/${cityId}/previsao`
-    const ctrl2 = new AbortController()
-    const t2 = setTimeout(() => ctrl2.abort(), 6000)
-    const fcRes = await fetch(forecastUrl, { signal: ctrl2.signal, cache: 'no-store' })
-    clearTimeout(t2)
-
-    if (!fcRes.ok) throw new Error(`CPTEC forecast HTTP ${fcRes.status}`)
-
-    const fcData = await fcRes.json()
-    const rawDays: any[] = []
-    if (fcData?.previsao) rawDays.push(...fcData.previsao)
-    if (fcData?.clima) rawDays.push(...fcData.clima)
-
-    const days: ForecastDay[] = rawDays.slice(0, 4).map((d: any) => {
-      const cond = (d.condicao || d.cond || 'nd').toLowerCase()
-      const dateStr = d.data || d.dia || ''
-      const date = new Date(dateStr + 'T12:00:00')
-      return {
-        date: dateStr,
-        dayOfWeek: isNaN(date.getTime()) ? '' : DAY_NAMES[date.getDay()],
-        condition: cond.toUpperCase(),
-        conditionLabel: CONDITIONS[cond] || cond,
-        min: parseInt(d.min || d.minima || '0', 10),
-        max: parseInt(d.max || d.maxima || '0', 10),
-        icon: CONDITION_ICONS[cond] || '🌡️',
-        wind: d.vento || d.vento_dir || '',
-        humidity: parseInt(d.umidade || '0', 10),
-        rainProbability: d.chuva ? parseInt(d.chuva, 10) : undefined,
-      }
+    const response = await fetch(upstream, {
+      signal: controller.signal,
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': USER_AGENT,
+      },
     })
 
+    if (!response.ok) throw new Error(`MET Norway HTTP ${response.status}`)
+
+    const payload = await response.json()
+    const entries: MetSeriesEntry[] = Array.isArray(payload?.properties?.timeseries)
+      ? payload.properties.timeseries
+      : []
+    const days = buildRollingForecast(entries)
+    if (!days.length) throw new Error('MET Norway retornou série sem períodos utilizáveis')
+
     return NextResponse.json({
-      source: 'CPTEC/INPE — Centro de Previsão de Tempo e Estudos Climáticos',
-      sourceUrl: 'https://cptec.inpe.br',
+      source: 'MET Norway Locationforecast 2.0',
+      sourceUrl: SOURCE_URL,
+      attribution: 'Weather data: MET Norway',
       queriedAt: new Date().toISOString(),
+      updatedAt: typeof payload?.properties?.meta?.updated_at === 'string'
+        ? payload.properties.meta.updated_at
+        : null,
       center: { lat, lon },
-      city: { id: cityId, name: cityName, uf },
+      city: null,
       days,
       total: days.length,
       offline: false,
       error: null,
-      dataQuality: 'live',
+      dataQuality: 'live-model-forecast',
+      periodBasis: 'rolling-24h',
+      note: 'Previsão por modelo meteorológico para as coordenadas atuais. Os cartões usam janelas móveis de 24h; nenhum fuso ou cidade é inferido pelo servidor.',
     }, {
       headers: {
-        'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=7200',
+        'Cache-Control': 'public, s-maxage=1800, stale-while-revalidate=7200',
       },
     })
-  } catch (err) {
+  } catch {
     return NextResponse.json({
-      source: 'CPTEC/INPE — indisponível',
-      sourceUrl: 'https://cptec.inpe.br',
+      source: 'MET Norway Locationforecast — indisponível',
+      sourceUrl: SOURCE_URL,
       queriedAt: new Date().toISOString(),
       center: { lat, lon },
       city: null,
       days: [],
       total: 0,
       offline: false,
-      error: 'unavailable',
+      error: 'upstream-unavailable',
       dataQuality: 'unavailable',
-      note: 'Não foi possível confirmar uma previsão no CPTEC. Nenhuma previsão sintética foi gerada.',
+      note: 'Não foi possível confirmar uma previsão meteorológica nesta consulta. Nenhum valor sintético foi gerado; o Service Worker pode usar a última resposta válida em cache.',
     }, { status: 503 })
+  } finally {
+    clearTimeout(timeout)
   }
 }
