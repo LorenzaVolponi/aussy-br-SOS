@@ -3,6 +3,8 @@ const LAT = '-25.4284'
 const LON = '-49.2733'
 const failures = []
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
 async function request(path, timeoutMs = 12000) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
@@ -24,21 +26,39 @@ async function request(path, timeoutMs = 12000) {
   }
 }
 
-async function check(name, path, validate, timeoutMs) {
-  try {
-    const result = await request(path, timeoutMs)
-    const problem = validate(result)
-    if (problem) {
-      failures.push(`${name}: ${problem}`)
-      console.error(`FAIL ${name}: ${problem}`)
-      return
+async function check(name, path, validate, timeoutMs, retries = 0) {
+  let lastProblem = 'unknown failure'
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const result = await request(path, timeoutMs)
+      const problem = validate(result)
+
+      if (!problem) {
+        console.log(`OK   ${name} (${result.response.status})`)
+        return
+      }
+
+      lastProblem = problem
+      const retryable = result.response.status === 429 || result.response.status >= 500
+      if (!retryable || attempt >= retries) break
+
+      const waitMs = 1500 * (attempt + 1)
+      console.warn(`RETRY ${name}: ${problem}; waiting ${waitMs}ms (${attempt + 1}/${retries})`)
+      await sleep(waitMs)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      lastProblem = `request error: ${message}`
+      if (attempt >= retries) break
+
+      const waitMs = 1500 * (attempt + 1)
+      console.warn(`RETRY ${name}: ${lastProblem}; waiting ${waitMs}ms (${attempt + 1}/${retries})`)
+      await sleep(waitMs)
     }
-    console.log(`OK   ${name} (${result.response.status})`)
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    failures.push(`${name}: request error: ${message}`)
-    console.error(`FAIL ${name}: request error: ${message}`)
   }
+
+  failures.push(`${name}: ${lastProblem}`)
+  console.error(`FAIL ${name}: ${lastProblem}`)
 }
 
 await check('health', '/api/health', ({ response, body }) => {
@@ -73,13 +93,13 @@ await check('weather live', `/api/cptec/forecast?lat=${LAT}&lon=${LON}`, ({ resp
   if (!hasMeasuredTemperature) return 'forecast has no numeric temperature range'
   if (body?.center?.lat !== Number(LAT) || body?.center?.lon !== Number(LON)) return 'response center does not match requested coordinates'
   return null
-}, 15000)
+}, 15000, 2)
 
 await check('reverse geocode live', `/api/geocode?lat=${LAT}&lon=${LON}`, ({ response, body }) => {
   if (response.status !== 200) return `HTTP ${response.status}: ${body?.error || body?.note || 'unknown error'}`
   if (!body?.city && !body?.displayName) return 'no place label returned'
   return null
-}, 15000)
+}, 15000, 2)
 
 await check('INMET stations live', `/api/inmet/stations?lat=${LAT}&lon=${LON}&raio=500`, ({ response, body }) => {
   if (response.status !== 200) return `HTTP ${response.status}: ${body?.error || body?.note || 'unknown error'}`
@@ -87,21 +107,21 @@ await check('INMET stations live', `/api/inmet/stations?lat=${LAT}&lon=${LON}&ra
   if (!Array.isArray(body?.proximas)) return 'proximas is not an array'
   if (!['live-observations', 'live-catalog'].includes(body?.dataQuality)) return `unexpected dataQuality ${String(body?.dataQuality)}`
   return null
-}, 18000)
+}, 18000, 2)
 
 await check('USGS earthquakes live', `/api/earthquakes?lat=${LAT}&lon=${LON}&raio=20000&mag=4&dias=7`, ({ response, body }) => {
   if (response.status !== 200) return `HTTP ${response.status}: ${body?.error || body?.note || 'unknown error'}`
   if (body?.dataQuality !== 'live') return `unexpected dataQuality ${String(body?.dataQuality)}`
   if (!Array.isArray(body?.events)) return 'events is not an array'
   return null
-}, 15000)
+}, 15000, 2)
 
 await check('NASA EONET live', `/api/eonet?lat=${LAT}&lon=${LON}&raio=10000&dias=30&status=all`, ({ response, body }) => {
   if (response.status !== 200) return `HTTP ${response.status}: ${body?.error || body?.note || 'unknown error'}`
   if (body?.dataQuality !== 'live-eonet') return `unexpected dataQuality ${String(body?.dataQuality)}`
   if (!Array.isArray(body?.events)) return 'events is not an array'
   return null
-}, 15000)
+}, 15000, 2)
 
 await check('INPE fire hotspots live', `/api/queimadas/focos?lat=${LAT}&lon=${LON}&raio=500`, ({ response, body }) => {
   if (response.status !== 200) return `HTTP ${response.status}: ${body?.error || body?.message || 'unknown error'}`
@@ -109,7 +129,7 @@ await check('INPE fire hotspots live', `/api/queimadas/focos?lat=${LAT}&lon=${LO
   if (!Array.isArray(body?.focos)) return 'focos is not an array'
   if (!Number.isInteger(body?.filesUsed) || body.filesUsed < 1) return 'no official recent CSV file was consumed'
   return null
-}, 20000)
+}, 20000, 2)
 
 await check('CelesTrak TLE live', `/api/satellites/tle?lat=${LAT}&lon=${LON}&group=weather&limit=10`, ({ response, body }) => {
   if (response.status !== 200) return `HTTP ${response.status}: ${body?.error || body?.note || 'unknown error'}`
@@ -117,7 +137,7 @@ await check('CelesTrak TLE live', `/api/satellites/tle?lat=${LAT}&lon=${LON}&gro
   if (!Array.isArray(body?.satellites) || body.satellites.length < 1) return 'no TLE-backed satellite returned'
   if (body?.observer?.lat !== Number(LAT) || body?.observer?.lon !== Number(LON)) return 'observer does not match requested coordinates'
   return null
-}, 15000)
+}, 15000, 2)
 
 await check('network status no server-location leak', '/api/network/status', ({ response, body }) => {
   if (response.status !== 200) return `HTTP ${response.status}`
