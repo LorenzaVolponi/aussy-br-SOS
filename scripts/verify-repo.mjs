@@ -220,10 +220,18 @@ forbid('src/lib/readiness-state.ts', readiness, [
   "id: 'cemaden-undocumented-api-blocked'",
 ])
 
+const layout = requireFragments('src/app/layout.tsx', [
+  'className="light"',
+  'defaultTheme="light"',
+  'statusBarStyle: "default"',
+])
+forbid('src/app/layout.tsx', layout, ['defaultTheme="dark"'])
+
 const page = requireFragments('src/app/page.tsx', [
-  'AUSSY · SISTEMA DE SEGURANÇA',
-  'Toque para emergência',
-  'QR localização',
+  '<HomeCommandDashboard',
+  'onOpenQr={() => setQrLocOpen(true)}',
+  'aria-label="SOS"',
+  'Menu rápido AUSSY',
   'Aguardando localização válida',
   'O Aussy não assume uma cidade padrão',
   "<EmergencySOS observerLat={point?.lat} observerLon={point?.lon} />",
@@ -244,6 +252,27 @@ forbid('src/app/page.tsx', page, [
   '+2.4M',
 ])
 
+const commandHome = requireFragments('src/components/aussy/home-command-dashboard.tsx', [
+  "const STORAGE_KEY = 'aussy_quick_actions_v2'",
+  'Ações rápidas',
+  'O essencial em até dois toques.',
+  'Ver todos os recursos',
+  'Compartilhar localização',
+  "fetch('/api/inmet/alerts'",
+  '/api/cptec/forecast?lat=',
+  "response.headers.get('X-Aussy-Cached')",
+  'INMET indisponível nesta consulta',
+  'Sem cidade padrão, sem coordenada inventada e com cache identificado.',
+])
+forbid('src/components/aussy/home-command-dashboard.tsx', commandHome, [
+  'São Paulo, SP',
+  '2 ALERTAS ATIVOS',
+  '100% online',
+  '24°',
+  'const lat = -15.7801',
+  'const lon = -47.9292',
+])
+
 const zoneFile = findZoneIdentifier()
 if (zoneFile) failures.push(`Windows metadata present: ${zoneFile}`)
 
@@ -253,4 +282,4 @@ if (failures.length) {
   process.exit(1)
 }
 
-console.log('Aussy repository invariants OK — frozen dependency graph, current home, SW v9, live-data trust boundaries and release gates are aligned')
+console.log('Aussy repository invariants OK — frozen dependencies, command home, SW v9, live-data trust boundaries and release gates are aligned')

@@ -6,11 +6,12 @@ test.describe('Aussy V1 mobile', () => {
     await context.setGeolocation({ latitude: -25.4284, longitude: -49.2733 })
   })
 
-  test('home renders critical actions without horizontal overflow', async ({ page }) => {
+  test('home renders the command interface without horizontal overflow', async ({ page }) => {
     await page.goto('/')
-    await expect(page.getByText('AUSSY', { exact: true }).first()).toBeVisible()
-    await expect(page.getByRole('button', { name: /Toque para emergência/i })).toBeVisible()
-    await expect(page.getByRole('button', { name: /Abrir emergência SOS/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Ir para o início do Aussy/i })).toBeVisible()
+    await expect(page.getByText('Ações rápidas', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^SOS$/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Ver todos os recursos/i })).toBeVisible()
 
     const dimensions = await page.evaluate(() => ({
       innerWidth: window.innerWidth,
@@ -26,20 +27,20 @@ test.describe('Aussy V1 mobile', () => {
     expect(body).not.toContain('0.0000°, 0.0000°')
   })
 
-  test('QR location opens and stays usable on mobile viewport', async ({ page }) => {
+  test('location sharing QR opens and stays usable on mobile viewport', async ({ page }) => {
     await page.goto('/')
-    await page.getByRole('button', { name: /QR localização/i }).click()
+    await page.getByRole('button', { name: /Compartilhar localização/i }).click()
     await expect(page.getByRole('dialog')).toBeVisible()
     await expect(page.getByText('QR Code da localização')).toBeVisible()
     await expect(page.getByRole('button', { name: /Atualizar GPS/i })).toBeVisible()
   })
 
-  test('bottom navigation remains reachable', async ({ page }) => {
+  test('bottom navigation keeps SOS centered and all primary destinations reachable', async ({ page }) => {
     await page.goto('/')
-    await expect(page.getByRole('button', { name: /Início/i }).last()).toBeVisible()
+    await expect(page.getByRole('button', { name: /^Início$/i }).last()).toBeVisible()
+    await expect(page.getByRole('button', { name: /^Mapa$/i }).last()).toBeVisible()
     await expect(page.getByRole('button', { name: /^SOS$/i }).last()).toBeVisible()
-    await expect(page.getByRole('button', { name: /Mapa/i }).last()).toBeVisible()
-    await expect(page.getByRole('button', { name: /Alertas/i }).last()).toBeVisible()
-    await expect(page.getByRole('button', { name: /Mais/i }).last()).toBeVisible()
+    await expect(page.getByRole('button', { name: /^Alertas$/i }).last()).toBeVisible()
+    await expect(page.getByRole('button', { name: /^Mais$/i }).last()).toBeVisible()
   })
 })
