@@ -1,59 +1,55 @@
 import { NextResponse } from 'next/server'
 
 /**
- * ANA / SNIRH — estações fluviométricas de referência.
+ * Hidrologia — gateway para fontes oficiais brasileiras.
  *
- * Regra de segurança: esta build NÃO possui credencial para o HidroWebservice
- * autenticado da ANA. Portanto, esta rota oferece somente referências locais
- * de posição/nome de algumas estações e NUNCA publica nível, tendência ou
- * atualização inventados como telemetria atual.
- *
- * Integração oficial para dados hidrológicos automatizados:
- * https://www.snirh.gov.br/hidrowebservice/swagger-ui/index.html
+ * O Aussy não possui nesta build uma credencial do HidroWebService capaz de
+ * consultar níveis/tendências automaticamente. Em vez de manter uma lista local
+ * de estações que pode envelhecer, esta rota expõe os canais oficiais que devem
+ * ser consultados para rios, cheias, secas e alertas hidrológicos.
  */
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 86400
 
-type Tendencia = 'desconhecido'
-
-interface EstacaoReferencia {
-  codigo: string
-  nome: string
-  rio: string
-  uf: string
-  lat: number
-  lon: number
-}
-
-interface EstacaoFluviometrica extends EstacaoReferencia {
-  nivel_atual: null
-  nivel_acima_abaixo: null
-  tendencia: Tendencia
-  atualizado: null
-  distancia: number
-}
-
-const OFFICIAL_API = 'https://www.snirh.gov.br/hidrowebservice/swagger-ui/index.html'
-
-const ESTACOES_REFERENCIA: EstacaoReferencia[] = [
-  { codigo: '14880000', nome: 'Manacapuru - Rio Solimões', rio: 'Solimões', uf: 'AM', lat: -3.3167, lon: -60.6167 },
-  { codigo: '14910000', nome: 'Manaus - Rio Negro', rio: 'Negro', uf: 'AM', lat: -3.1167, lon: -60.05 },
-  { codigo: '64570000', nome: 'Itaipu - Rio Paraná', rio: 'Paraná', uf: 'PR', lat: -25.4167, lon: -54.6167 },
-  { codigo: '64565000', nome: 'Guaíra - Rio Paraná', rio: 'Paraná', uf: 'PR', lat: -24.0833, lon: -54.2667 },
-  { codigo: '49370000', nome: 'São Francisco - Petrolina', rio: 'São Francisco', uf: 'PE', lat: -9.4075, lon: -40.5025 },
-  { codigo: '44300000', nome: 'Três Marias - Rio São Francisco', rio: 'São Francisco', uf: 'MG', lat: -18.2167, lon: -45.2333 },
-  { codigo: '59050000', nome: 'São Paulo - Rio Tietê', rio: 'Tietê', uf: 'SP', lat: -23.5505, lon: -46.6333 },
-  { codigo: '58770000', nome: 'Resende - Rio Paraíba do Sul', rio: 'Paraíba do Sul', uf: 'RJ', lat: -22.4833, lon: -44.45 },
-  { codigo: '85770000', nome: 'Porto Alegre - Guaíba', rio: 'Guaíba', uf: 'RS', lat: -30.0505, lon: -51.2333 },
-  { codigo: '56870000', nome: 'Colatina - Rio Doce', rio: 'Doce', uf: 'ES', lat: -19.5333, lon: -40.6333 },
-  { codigo: '66870000', nome: 'Cáceres - Rio Paraguai', rio: 'Paraguai', uf: 'MT', lat: -16.075, lon: -57.6817 },
-  { codigo: '66900000', nome: 'Corumbá - Rio Paraguai', rio: 'Paraguai', uf: 'MS', lat: -19.0086, lon: -57.6494 },
-  { codigo: '23170000', nome: 'Araguaína - Rio Tocantins', rio: 'Tocantins', uf: 'TO', lat: -7.1833, lon: -48.2 },
-  { codigo: '76170000', nome: 'Uruguaiana - Rio Uruguai', rio: 'Uruguai', uf: 'RS', lat: -29.76, lon: -57.09 },
-  { codigo: '34950000', nome: 'Teresina - Rio Parnaíba', rio: 'Parnaíba', uf: 'PI', lat: -5.0833, lon: -42.8167 },
-  { codigo: '35490000', nome: 'Recife - Rio Capibaribe', rio: 'Capibaribe', uf: 'PE', lat: -8.0476, lon: -34.877 },
-]
+const SOURCES = [
+  {
+    id: 'sgb-sace',
+    name: 'SGB · SACE',
+    organization: 'Serviço Geológico do Brasil',
+    url: 'https://www.sgb.gov.br/sace/',
+    kind: 'monitoring-and-alerts',
+    description: 'Monitoramento hidrológico, níveis de rios, bacias acompanhadas, boletins e alertas dos Sistemas de Alerta Hidrológico.',
+    recommended: true,
+  },
+  {
+    id: 'ana-monitoramento',
+    name: 'ANA · Monitoramento Hidrológico',
+    organization: 'Agência Nacional de Águas e Saneamento Básico',
+    url: 'https://www.gov.br/ana/pt-br/assuntos/monitoramento-e-eventos-criticos/monitoramento-hidrologico',
+    kind: 'official-systems',
+    description: 'Acesso oficial a Telemetria, HidroWeb, HidroSat, reservatórios e demais sistemas de monitoramento da ANA.',
+    recommended: true,
+  },
+  {
+    id: 'ana-sala',
+    name: 'ANA · Sala de Situação',
+    organization: 'Agência Nacional de Águas e Saneamento Básico',
+    url: 'https://www.gov.br/ana/pt-br/sala-de-situacao',
+    kind: 'bulletins-and-critical-events',
+    description: 'Boletins e acompanhamento de chuvas, níveis, vazões, secas e inundações em sistemas e bacias acompanhados.',
+    recommended: true,
+  },
+  {
+    id: 'ana-hidrowebservice',
+    name: 'ANA · HidroWebService',
+    organization: 'Sistema Nacional de Informações sobre Recursos Hídricos',
+    url: 'https://www.ana.gov.br/hidrowebservice/swagger-ui/index.html',
+    kind: 'authenticated-api',
+    description: 'Documentação da integração oficial automatizada. O acesso operacional pode exigir autenticação/credencial própria.',
+    recommended: false,
+  },
+] as const
 
 function parseCoordinate(value: string | null, min: number, max: number): number | null {
   if (value === null || value.trim() === '') return null
@@ -62,59 +58,37 @@ function parseCoordinate(value: string | null, min: number, max: number): number
   return parsed
 }
 
-function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371
-  const toRad = (degrees: number) => (degrees * Math.PI) / 180
-  const dLat = toRad(lat2 - lat1)
-  const dLon = toRad(lon2 - lon1)
-  const a = Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-}
-
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const lat = parseCoordinate(url.searchParams.get('lat'), -90, 90)
   const lon = parseCoordinate(url.searchParams.get('lon'), -180, 180)
-  const raioRaw = Number(url.searchParams.get('raio') || '500')
-  const raio = Number.isFinite(raioRaw) ? Math.min(Math.max(raioRaw, 1), 2000) : 500
 
   if (lat === null || lon === null) {
     return NextResponse.json({
       online: false,
+      automationAvailable: false,
       dataQuality: 'unavailable',
-      fonte: 'ANA / SNIRH',
-      total: 0,
-      estacoes: [],
-      atualizado_em: null,
+      source: 'SGB / ANA',
+      reference: null,
+      sources: [],
       error: 'invalid-location',
-      officialApi: OFFICIAL_API,
-      aviso: 'Latitude e longitude válidas são obrigatórias. Nenhuma cidade padrão é assumida.',
+      note: 'Latitude e longitude válidas são obrigatórias. Nenhuma cidade padrão é assumida.',
     }, { status: 400 })
   }
 
-  const estacoes: EstacaoFluviometrica[] = ESTACOES_REFERENCIA
-    .map((estacao) => ({
-      ...estacao,
-      nivel_atual: null,
-      nivel_acima_abaixo: null,
-      tendencia: 'desconhecido' as const,
-      atualizado: null,
-      distancia: haversine(lat, lon, estacao.lat, estacao.lon),
-    }))
-    .filter((estacao) => estacao.distancia <= raio)
-    .sort((a, b) => a.distancia - b.distancia)
-
   return NextResponse.json({
     online: false,
-    dataQuality: 'reference-location-only',
-    verifiedAt: '2026-08-17',
-    fonte: 'Referência local de estações — não é telemetria ANA em tempo real',
-    referencia: { lat, lon, raioKm: raio },
-    total: estacoes.length,
-    estacoes,
-    atualizado_em: null,
-    officialApi: OFFICIAL_API,
-    aviso: 'Níveis e tendências foram desativados nesta build. Dados hidrológicos automatizados em tempo real exigem integração oficial/autenticada com o HidroWebservice da ANA.',
+    automationAvailable: false,
+    dataQuality: 'official-portals-only',
+    verifiedAt: '2026-08-27',
+    source: 'SGB / ANA — fontes oficiais de hidrologia',
+    reference: { lat, lon },
+    sources: SOURCES,
+    error: null,
+    note: 'O Aussy não publica nível, vazão, tendência ou alerta de rio como dado ao vivo sem uma resposta oficial automatizada confirmada. Use SGB/SACE e os sistemas da ANA para a situação hidrológica atual.',
+  }, {
+    headers: {
+      'Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=604800',
+    },
   })
 }
