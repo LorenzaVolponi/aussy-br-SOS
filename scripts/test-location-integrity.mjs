@@ -85,13 +85,15 @@ const weatherUi = read(weatherUiPath)
 requireFragments(weatherUiPath, weatherUi, [
   "res.headers.get('X-Aussy-Cached')",
   "res.headers.get('X-Aussy-Offline')",
-  "{cached ? 'CACHE' : 'AO VIVO'}",
-  'Fonte: {data.source',
+  "{cached ? 'CACHE' : 'MODELO ATUAL'}",
+  'Fonte de previsão: {data.source',
+  'alertas oficiais do INMET',
 ])
 forbidFragments(weatherUiPath, weatherUi, [
   'Previsão do Tempo — CPTEC/INPE',
   'CPTEC/INPE — previsão oficial brasileira',
   '>ESTIMADO<',
+  "{cached ? 'CACHE' : 'AO VIVO'}",
 ])
 
 if (failures.length) {
@@ -100,4 +102,4 @@ if (failures.length) {
   process.exit(1)
 }
 
-console.log('Location/weather integrity OK — no hidden city fallback, no synthetic weather zeros, cache provenance explicit')
+console.log('Location/weather integrity OK — no hidden city fallback, no synthetic weather zeros, model/cache provenance explicit')
