@@ -115,6 +115,52 @@ export default function Home() {
   const { point, detect, loading: geoLoading } = useGeolocation()
   const { resolvedTheme, setTheme } = useTheme()
 
+  const locationPresentation = (() => {
+    if (!point) {
+      return {
+        title: 'Localização pendente',
+        status: geoLoading ? 'Buscando posição' : 'Localização pendente',
+        source: 'Autorize o GPS para localizar você com precisão.',
+      }
+    }
+
+    const accuracy = typeof point.accuracy === 'number' && Number.isFinite(point.accuracy) && point.accuracy > 0
+      ? point.accuracy >= 1000
+        ? `±${(point.accuracy / 1000).toFixed(1)} km`
+        : `±${Math.round(point.accuracy)} m`
+      : null
+
+    if (point.source === 'gps') {
+      return {
+        title: 'Localização por GPS',
+        status: 'GPS ativo',
+        source: `GPS do dispositivo${accuracy ? ` · ${accuracy}` : ''}`,
+      }
+    }
+
+    if (point.source === 'ip') {
+      return {
+        title: 'Localização aproximada',
+        status: 'Rede aproximada',
+        source: `Estimativa por rede/IP${accuracy ? ` · ${accuracy}` : ''} · não é GPS`,
+      }
+    }
+
+    if (point.source === 'cached') {
+      return {
+        title: 'Última localização conhecida',
+        status: 'Posição salva',
+        source: 'Cache local do dispositivo · pode estar desatualizado',
+      }
+    }
+
+    return {
+      title: 'Localização informada',
+      status: 'Posição manual',
+      source: 'Coordenadas inseridas manualmente',
+    }
+  })()
+
   useEffect(() => {
     setThemeMounted(true)
   }, [])
@@ -140,18 +186,23 @@ export default function Home() {
   }, [detect])
 
   useEffect(() => {
-    if (point?.lat == null || point?.lon == null) return
+    if (point?.lat == null || point?.lon == null) {
+      setCityName(null)
+      return
+    }
+
+    setCityName(point.city || null)
     let cancelled = false
     fetch(`/api/geocode?lat=${point.lat}&lon=${point.lon}`)
       .then((response) => response.json())
       .then((data) => {
-        if (!cancelled && data.city) setCityName(data.city)
+        if (!cancelled) setCityName(data.city || point.city || null)
       })
       .catch(() => null)
     return () => {
       cancelled = true
     }
-  }, [point?.lat, point?.lon])
+  }, [point?.lat, point?.lon, point?.city])
 
   const handleInstall = async () => {
     if (!installPrompt) return
@@ -190,10 +241,10 @@ export default function Home() {
   )
 
   const HomeHero = () => {
-    const locationTitle = cityName || (point ? 'Localização precisa' : 'Localização pendente')
+    const locationTitle = cityName || point?.city || locationPresentation.title
     const locationMeta = point
-      ? `${point.lat.toFixed(4)}°, ${point.lon.toFixed(4)}°`
-      : 'Autorize o GPS para localizar você com precisão.'
+      ? `${point.lat.toFixed(4)}°, ${point.lon.toFixed(4)}° · ${locationPresentation.source}`
+      : locationPresentation.source
 
     const exploreItems: Array<{ label: string; icon: typeof Activity; action: () => void }> = [
       { label: 'Mapa', icon: MapIcon, action: () => handleTabClick('mapa') },
@@ -265,9 +316,9 @@ export default function Home() {
             </div>
             <button onClick={() => detect()} disabled={geoLoading} className="min-h-28 p-4 text-left transition hover:bg-[#D9A76A]/5">
               <MapPin className={`h-5 w-5 ${point ? 'text-[#D9A76A]' : 'text-muted-foreground'} ${geoLoading ? 'animate-pulse' : ''}`} />
-              <div className="mt-3 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">GPS</div>
-              <div className="mt-1 text-sm font-semibold">{point ? 'Ativo' : 'Aguardando'}</div>
-              <div className="mt-1 text-[10px] text-muted-foreground">{geoLoading ? 'Atualizando posição' : 'Toque para atualizar'}</div>
+              <div className="mt-3 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Localização</div>
+              <div className="mt-1 text-sm font-semibold">{locationPresentation.status}</div>
+              <div className="mt-1 text-[10px] leading-4 text-muted-foreground">{geoLoading ? 'Atualizando posição' : point ? locationPresentation.source : 'Toque para atualizar'}</div>
             </button>
           </div>
 
@@ -345,8 +396,8 @@ export default function Home() {
                   <span className={`h-1.5 w-1.5 rounded-full ${network.online ? 'bg-emerald-500' : 'bg-red-500'}`} />
                   {network.online ? 'Online' : 'Offline'}
                 </div>
-                <div className="mt-0.5 max-w-32 truncate text-xs">{cityName || 'Brasil'}</div>
-                <button onClick={() => detect()} disabled={geoLoading} className="mt-0.5 flex items-center gap-1 text-[9px] uppercase tracking-[0.14em] text-muted-foreground hover:text-foreground"><MapPin className="h-2.5 w-2.5" /> {point ? 'GPS ativo' : geoLoading ? 'GPS buscando' : 'GPS pendente'}</button>
+                <div className="mt-0.5 max-w-32 truncate text-xs">{cityName || point?.city || 'Localização'}</div>
+                <button onClick={() => detect()} disabled={geoLoading} className="mt-0.5 flex items-center gap-1 text-[9px] uppercase tracking-[0.14em] text-muted-foreground hover:text-foreground"><MapPin className="h-2.5 w-2.5" /> {locationPresentation.status}</button>
               </div>
             </div>
 
@@ -364,8 +415,8 @@ export default function Home() {
         <div className="border-t border-border/35 px-4 py-1.5 sm:hidden">
           <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 text-[9px] uppercase tracking-[0.12em] text-muted-foreground">
             <span className={network.online ? 'text-emerald-500' : 'text-red-500'}>● {network.online ? 'Online' : 'Offline'}</span>
-            <span className="truncate">{cityName || (point ? 'GPS ativo' : 'Localização pendente')}</span>
-            <button onClick={() => detect()} disabled={geoLoading} className="flex items-center gap-1"><Zap className={`h-3 w-3 ${geoLoading ? 'animate-pulse' : ''}`} /> GPS</button>
+            <span className="truncate">{cityName || point?.city || locationPresentation.status}</span>
+            <button onClick={() => detect()} disabled={geoLoading} className="flex items-center gap-1"><Zap className={`h-3 w-3 ${geoLoading ? 'animate-pulse' : ''}`} /> Atualizar</button>
           </div>
         </div>
       </header>
