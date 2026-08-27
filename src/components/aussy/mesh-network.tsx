@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -8,342 +8,233 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Bluetooth,
-  BluetoothConnected,
   Radio,
   Send,
-  Users,
+  PanelsTopLeft,
   AlertCircle,
-  Wifi,
   MessageSquare,
+  ShieldCheck,
 } from 'lucide-react'
 
-interface MeshNode {
+interface LocalPeer {
   id: string
   name: string
-  rssi?: number
   lastSeen: number
 }
 
-interface MeshMessage {
+interface LocalMessage {
   id: string
   from: string
-  to: 'broadcast' | string
   text: string
   timestamp: number
   self: boolean
 }
 
-// Serviço Bluetooth Mesh custom (não é BLE Mesh padrão — é BroadcastChannel + Web Bluetooth)
-const MESH_SERVICE_ID = 'aussy-ontech-mesh'
+const LOCAL_CHANNEL_ID = 'aussy-ontech-local-channel'
 
 export function MeshNetwork() {
-  const [enabled, setEnabled] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [nodes, setNodes] = useState<MeshNode[]>([])
-  const [messages, setMessages] = useState<MeshMessage[]>([])
+  const [peers, setPeers] = useState<LocalPeer[]>([])
+  const [messages, setMessages] = useState<LocalMessage[]>([])
   const [input, setInput] = useState('')
-  const [peerId, setPeerId] = useState<string>('')
+  const [peerId, setPeerId] = useState('')
+  const [bluetoothSupported, setBluetoothSupported] = useState(false)
+  const [selectedBluetoothDevice, setSelectedBluetoothDevice] = useState<string | null>(null)
   const channelRef = useRef<BroadcastChannel | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Gera ID único do peer
   useEffect(() => {
-    const id = `peer-${Math.random().toString(36).slice(2, 8)}`
-    setPeerId(id)
+    setPeerId(`context-${crypto.randomUUID().slice(0, 8)}`)
+    setBluetoothSupported(typeof navigator !== 'undefined' && 'bluetooth' in navigator)
   }, [])
 
-  // Tenta iniciar Web Bluetooth (apenas se disponível e habilitado)
-  const enableBluetooth = async () => {
-    setError(null)
-    try {
-      if (!('bluetooth' in navigator)) {
-        throw new Error('Web Bluetooth não suportado neste navegador. Use Chrome/Edge no Android/desktop.')
-      }
-
-      // Tenta solicitar dispositivo (requer gesto do usuário)
-      const device = await (navigator as any).bluetooth.requestDevice({
-        acceptAllDevices: true,
-        optionalServices: ['generic_access'],
-      })
-
-      // Adiciona como nó descoberto
-      const newNode: MeshNode = {
-        id: device.id,
-        name: device.name || 'Dispositivo BLE',
-        lastSeen: Date.now(),
-      }
-      setNodes((prev) => [...prev.filter((n) => n.id !== newNode.id), newNode])
-      setEnabled(true)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Falha ao ativar Bluetooth')
-    }
-  }
-
-  // BroadcastChannel funciona entre abas no mesmo dispositivo (mesh local)
   useEffect(() => {
-    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return
-    const channel = new BroadcastChannel(MESH_SERVICE_ID)
+    if (!peerId || typeof window === 'undefined' || !('BroadcastChannel' in window)) return
+
+    const channel = new BroadcastChannel(LOCAL_CHANNEL_ID)
     channelRef.current = channel
 
     channel.onmessage = (event) => {
       const msg = event.data
+      if (!msg || typeof msg !== 'object') return
+
       if (msg.type === 'hello') {
-        // Novo peer entrou — responde com presença
-        channel.postMessage({ type: 'present', peerId, name: `Dispositivo-${peerId.slice(-4)}` })
-        setNodes((prev) => {
-          if (prev.find((n) => n.id === msg.peerId)) return prev
-          return [...prev, { id: msg.peerId, name: msg.name, lastSeen: Date.now() }]
-        })
-      } else if (msg.type === 'present') {
-        setNodes((prev) => {
-          if (prev.find((n) => n.id === msg.peerId)) {
-            return prev.map((n) => n.id === msg.peerId ? { ...n, lastSeen: Date.now() } : n)
-          }
-          return [...prev, { id: msg.peerId, name: msg.name, lastSeen: Date.now() }]
-        })
-      } else if (msg.type === 'message') {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `${Date.now()}-${Math.random()}`,
-            from: msg.peerId,
-            to: 'broadcast',
-            text: msg.text,
-            timestamp: Date.now(),
-            self: msg.peerId === peerId,
-          },
-        ])
-      } else if (msg.type === 'bye') {
-        setNodes((prev) => prev.filter((n) => n.id !== msg.peerId))
+        channel.postMessage({ type: 'present', peerId, name: `Aussy-${peerId.slice(-4)}` })
+        if (msg.peerId && msg.peerId !== peerId) {
+          setPeers((current) => current.some((item) => item.id === msg.peerId)
+            ? current.map((item) => item.id === msg.peerId ? { ...item, lastSeen: Date.now() } : item)
+            : [...current, { id: msg.peerId, name: msg.name || 'Contexto Aussy', lastSeen: Date.now() }])
+        }
+      }
+
+      if (msg.type === 'present' && msg.peerId && msg.peerId !== peerId) {
+        setPeers((current) => current.some((item) => item.id === msg.peerId)
+          ? current.map((item) => item.id === msg.peerId ? { ...item, lastSeen: Date.now() } : item)
+          : [...current, { id: msg.peerId, name: msg.name || 'Contexto Aussy', lastSeen: Date.now() }])
+      }
+
+      if (msg.type === 'message' && msg.peerId !== peerId && typeof msg.text === 'string') {
+        setMessages((current) => [...current, {
+          id: crypto.randomUUID(),
+          from: msg.peerId || 'contexto',
+          text: msg.text,
+          timestamp: Date.now(),
+          self: false,
+        }])
+      }
+
+      if (msg.type === 'bye' && msg.peerId) {
+        setPeers((current) => current.filter((item) => item.id !== msg.peerId))
       }
     }
 
-    // Anuncia presença
-    channel.postMessage({ type: 'hello', peerId, name: `Dispositivo-${peerId.slice(-4)}` })
+    channel.postMessage({ type: 'hello', peerId, name: `Aussy-${peerId.slice(-4)}` })
 
     return () => {
       channel.postMessage({ type: 'bye', peerId })
       channel.close()
+      channelRef.current = null
     }
   }, [peerId])
 
-  // Auto-scroll
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages])
 
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const now = Date.now()
+      setPeers((current) => current.filter((peer) => now - peer.lastSeen < 30000))
+    }, 5000)
+    return () => window.clearInterval(id)
+  }, [])
+
+  const testBluetooth = async () => {
+    setError(null)
+    setSelectedBluetoothDevice(null)
+    try {
+      if (!('bluetooth' in navigator)) throw new Error('Web Bluetooth não é exposto por este navegador.')
+      const device = await (navigator as Navigator & { bluetooth: { requestDevice(options: { acceptAllDevices: boolean }): Promise<{ name?: string }> } }).bluetooth.requestDevice({ acceptAllDevices: true })
+      setSelectedBluetoothDevice(device.name || 'Dispositivo Bluetooth selecionado')
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === 'NotFoundError') return
+      setError(cause instanceof Error ? cause.message : 'Falha ao abrir o seletor Bluetooth')
+    }
+  }
+
+  const announce = () => {
+    channelRef.current?.postMessage({ type: 'hello', peerId, name: `Aussy-${peerId.slice(-4)}` })
+  }
+
   const sendMessage = () => {
-    if (!input.trim() || !channelRef.current) return
     const text = input.trim()
+    if (!text || !channelRef.current) return
     channelRef.current.postMessage({ type: 'message', peerId, text })
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `${Date.now()}-${Math.random()}`,
-        from: peerId,
-        to: 'broadcast',
-        text,
-        timestamp: Date.now(),
-        self: true,
-      },
-    ])
+    setMessages((current) => [...current, {
+      id: crypto.randomUUID(),
+      from: peerId,
+      text,
+      timestamp: Date.now(),
+      self: true,
+    }])
     setInput('')
   }
 
-  // Remove nós inativos (>30s sem sinal)
-  useEffect(() => {
-    const id = setInterval(() => {
-      const now = Date.now()
-      setNodes((prev) => prev.filter((n) => now - n.lastSeen < 30000))
-    }, 5000)
-    return () => clearInterval(id)
-  }, [])
-
-  const connected = nodes.length > 0
-  const supported = typeof window !== 'undefined' && 'BroadcastChannel' in window
-  // Estado para bluetoothSupported (evita hydration mismatch)
-  const [bluetoothSupported, setBluetoothSupported] = useState(false)
-  useEffect(() => {
-    setBluetoothSupported(typeof navigator !== 'undefined' && 'bluetooth' in navigator)
-  }, [])
+  const broadcastSupported = typeof window !== 'undefined' && 'BroadcastChannel' in window
 
   return (
     <div className="space-y-4">
-      {/* Status da mesh */}
-      <Card className={`glass-card ${connected ? 'border-emerald-500/40' : 'border-border/40'}`}>
+      <Card className="glass-card">
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2 text-base">
-              {connected ? (
-                <BluetoothConnected className="h-5 w-5 text-emerald-400" />
-              ) : (
-                <Bluetooth className="h-5 w-5 text-signal" />
-              )}
-              Rede Mesh Local
-            </CardTitle>
-            <Badge
-              variant="outline"
-              className={
-                connected
-                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                  : 'bg-muted/30 text-muted-foreground'
-              }
-            >
-              {nodes.length} {nodes.length === 1 ? 'par' : 'pares'}
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base text-slate-950 dark:text-slate-50">
+                <PanelsTopLeft className="h-5 w-5 text-blue-700 dark:text-blue-300" />
+                Canal local experimental
+              </CardTitle>
+              <p className="mt-1 text-sm leading-5 text-slate-600 dark:text-slate-400">Diagnóstico entre contextos Aussy abertos no mesmo ambiente de navegador.</p>
+            </div>
+            <Badge variant="outline" className="border-slate-300 bg-slate-50 px-2 py-1 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+              {peers.length} contexto{peers.length === 1 ? '' : 's'}
             </Badge>
           </div>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            Comunicacao entre dispositivos próximos <strong className="text-foreground">sem internet</strong> — usa Web Bluetooth e BroadcastChannel. Cada celular vira um nó da rede, retransmitindo mensagens para outros próximos.
-          </p>
 
-          {!supported && (
-            <div className="rounded-md bg-amber-500/10 border border-amber-500/30 p-2 text-xs text-amber-400 flex items-start gap-2">
-              <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
-              <span>Seu navegador não suporta BroadcastChannel. Use Chrome, Edge ou Firefox atualizado.</span>
+        <CardContent className="space-y-4">
+          <div className="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm leading-5 text-blue-950 dark:border-blue-900/60 dark:bg-blue-950/20 dark:text-blue-200">
+            <ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            <p><strong>Limite real:</strong> isto não é uma rede mesh celular‑para‑celular. BroadcastChannel comunica contextos compatíveis do mesmo site no ambiente do navegador; o teste de Bluetooth abaixo apenas abre o seletor de dispositivo e não transporta este chat.</p>
+          </div>
+
+          {!broadcastSupported && (
+            <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200">
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" /> BroadcastChannel não está disponível neste navegador.
             </div>
           )}
 
-          {/* Botões de ação */}
-          <div className="flex gap-2">
-            <Button
-              onClick={enableBluetooth}
-              disabled={!bluetoothSupported}
-              size="sm"
-              className="flex-1"
-              variant={enabled ? 'outline' : 'default'}
-            >
-              <Bluetooth className="h-3.5 w-3.5 mr-1.5" />
-              {enabled ? 'BLE Ativado' : 'Ativar Bluetooth'}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button onClick={announce} variant="outline" className="min-h-11 justify-start" disabled={!broadcastSupported}>
+              <Radio className="mr-2 h-4 w-4" /> Revalidar canal local
             </Button>
-            <Button
-              onClick={() => {
-                if (channelRef.current) {
-                  channelRef.current.postMessage({ type: 'hello', peerId, name: `Dispositivo-${peerId.slice(-4)}` })
-                }
-              }}
-              size="sm"
-              variant="outline"
-            >
-              <Users className="h-3.5 w-3.5 mr-1.5" />
-              Anunciar
+            <Button onClick={testBluetooth} variant="outline" className="min-h-11 justify-start" disabled={!bluetoothSupported}>
+              <Bluetooth className="mr-2 h-4 w-4" /> Testar Web Bluetooth
             </Button>
           </div>
 
-          {!bluetoothSupported && (
-            <p className="text-[10px] text-amber-400">
-              ⚠️ Web Bluetooth não disponível. Mesh funcionará apenas entre abas/dispositivos no mesmo navegador (BroadcastChannel).
+          {selectedBluetoothDevice && (
+            <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/20 dark:text-emerald-200">
+              Bluetooth selecionado: <strong>{selectedBluetoothDevice}</strong>. Isso confirma o seletor Web Bluetooth, não uma conexão de chat/mesh.
             </p>
           )}
 
-          {error && (
-            <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 p-2 rounded-md">
-              {error}
-            </div>
-          )}
-
-          {/* ID do peer */}
-          <div className="text-xs font-mono-jet text-muted-foreground text-center">
-            seu ID: <span className="text-signal">{peerId}</span>
-          </div>
+          {error && <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-200">{error}</p>}
         </CardContent>
       </Card>
 
-      {/* Chat mesh */}
       <Card className="glass-card">
         <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <MessageSquare className="h-4 w-4 text-signal" />
-            Chat Mesh — Broadcast
+          <CardTitle className="flex items-center gap-2 text-base text-slate-950 dark:text-slate-50">
+            <MessageSquare className="h-5 w-5 text-blue-700 dark:text-blue-300" />
+            Mensagens do canal local
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <ScrollArea className="h-60 mb-3">
-            <div ref={scrollRef} className="space-y-2 pr-2">
+          <ScrollArea className="mb-3 h-56 rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900">
+            <div ref={scrollRef} className="space-y-2 p-3">
               {messages.length === 0 ? (
-                <div className="text-center text-muted-foreground text-xs py-8">
-                  Nenhuma mensagem ainda. Envie uma mensagem broadcast — todos os pares conectados receberão.
+                <div className="py-8 text-center text-sm text-slate-600 dark:text-slate-400">Nenhuma mensagem local nesta sessão.</div>
+              ) : messages.map((msg) => (
+                <div key={msg.id} className={`flex flex-col ${msg.self ? 'items-end' : 'items-start'}`}>
+                  <div className="mb-1 text-xs text-slate-500 dark:text-slate-400">{msg.self ? 'você' : msg.from.slice(-8)} · {new Date(msg.timestamp).toLocaleTimeString('pt-BR')}</div>
+                  <div className={`max-w-[85%] rounded-xl border px-3 py-2 text-sm ${msg.self
+                    ? 'border-blue-200 bg-blue-50 text-blue-950 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-100'
+                    : 'border-slate-200 bg-white text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100'}`}>{msg.text}</div>
                 </div>
-              ) : (
-                messages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`flex flex-col ${msg.self ? 'items-end' : 'items-start'}`}
-                  >
-                    <div className={`text-[10px] text-muted-foreground mb-0.5 font-mono-jet ${msg.self ? 'text-right' : ''}`}>
-                      {msg.self ? 'você' : msg.from.slice(-6)} · {new Date(msg.timestamp).toLocaleTimeString('pt-BR')}
-                    </div>
-                    <div
-                      className={`rounded-lg px-3 py-2 text-sm max-w-[80%] ${
-                        msg.self
-                          ? 'bg-signal/20 text-foreground border border-signal/30'
-                          : 'bg-secondary/40 text-foreground border border-border/30'
-                      }`}
-                    >
-                      {msg.text}
-                    </div>
-                  </div>
-                ))
-              )}
+              ))}
             </div>
           </ScrollArea>
 
           <div className="flex gap-2">
-            <Input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-              placeholder="Mensagem para a rede mesh..."
-              className="text-sm"
-            />
-            <Button onClick={sendMessage} size="sm" className="px-3">
-              <Send className="h-3.5 w-3.5" />
+            <Input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && sendMessage()} placeholder="Mensagem local..." className="min-h-11 text-base" />
+            <Button onClick={sendMessage} className="h-11 w-11 px-0" aria-label="Enviar mensagem local" disabled={!broadcastSupported}>
+              <Send className="h-4 w-4" />
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Lista de nós */}
       <Card className="glass-card">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <Users className="h-4 w-4 text-orbit" />
-            Dispositivos na Rede
-            <Badge variant="secondary" className="text-[10px] ml-auto">
-              {nodes.length + 1}
-            </Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2 p-2 rounded-md bg-signal/10 border border-signal/30">
-              <Wifi className="h-3.5 w-3.5 text-signal" />
-              <span className="text-sm font-medium">Você (este dispositivo)</span>
-              <span className="ml-auto text-[10px] text-muted-foreground font-mono-jet">
-                {peerId}
-              </span>
+        <CardHeader className="pb-3"><CardTitle className="text-base text-slate-950 dark:text-slate-50">Contextos Aussy detectados</CardTitle></CardHeader>
+        <CardContent className="space-y-2">
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950 dark:border-blue-900/60 dark:bg-blue-950/20 dark:text-blue-200">Este contexto: <span className="font-mono">{peerId || 'iniciando…'}</span></div>
+          {peers.map((peer) => (
+            <div key={peer.id} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 text-sm dark:border-slate-800 dark:bg-slate-950">
+              <Radio className="h-4 w-4 text-emerald-700 dark:text-emerald-300" />
+              <span className="font-medium">{peer.name}</span>
+              <span className="ml-auto text-xs text-slate-500 dark:text-slate-400">visto há {Math.max(0, Math.round((Date.now() - peer.lastSeen) / 1000))}s</span>
             </div>
-            {nodes.map((node) => (
-              <div
-                key={node.id}
-                className="flex items-center gap-2 p-2 rounded-md bg-secondary/30 border border-border/30"
-              >
-                <Radio className="h-3.5 w-3.5 text-emerald-400" />
-                <span className="text-sm font-medium">{node.name}</span>
-                <span className="ml-auto text-[10px] text-muted-foreground font-mono-jet">
-                  há {Math.round((Date.now() - node.lastSeen) / 1000)}s
-                </span>
-              </div>
-            ))}
-            {nodes.length === 0 && (
-              <div className="text-center text-xs text-muted-foreground py-4">
-                Nenhum par conectado. Abra o app em outro dispositivo na mesma rede, ou ative o Bluetooth para escanear dispositivos BLE próximos.
-              </div>
-            )}
-          </div>
+          ))}
+          {!peers.length && <p className="py-3 text-sm text-slate-600 dark:text-slate-400">Nenhum outro contexto Aussy respondeu nesta sessão.</p>}
         </CardContent>
       </Card>
     </div>
