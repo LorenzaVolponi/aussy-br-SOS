@@ -293,14 +293,14 @@ export function useGeolocation() {
 
     try {
       let nextPoint: GeoPoint | null = null
-      let gpsFailure: Error | null = null
+      let gpsError: Error | null = null
 
       if (preferGps) {
         try {
           nextPoint = await fromGps()
         } catch (caught) {
-          gpsFailure = caught instanceof Error ? caught : new Error('GPS indisponível')
-          if (gpsFailure.name === 'GeolocationPermissionDenied') setPermission('denied')
+          gpsError = caught instanceof Error ? caught : new Error('GPS indisponível')
+          if (gpsError.name === 'GeolocationPermissionDenied') setPermission('denied')
         }
       }
 
@@ -316,24 +316,25 @@ export function useGeolocation() {
         try {
           nextPoint = await fromGps()
         } catch (caught) {
-          gpsFailure = caught instanceof Error ? caught : new Error('GPS indisponível')
-          if (gpsFailure.name === 'GeolocationPermissionDenied') setPermission('denied')
+          gpsError = caught instanceof Error ? caught : new Error('GPS indisponível')
+          if (gpsError.name === 'GeolocationPermissionDenied') setPermission('denied')
         }
       }
 
       if (!nextPoint) {
+        // A última posição conhecida ainda é preferível a um default arbitrário.
         const cached = readCachedPoint()
         if (cached) {
           if (requestId === requestIdRef.current) {
             setPoint(cached)
-            setError(gpsFailure?.message || 'Usando a última localização salva no aparelho.')
+            setError(gpsError?.message || 'Usando a última localização salva no aparelho.')
           }
           return cached
         }
       }
 
       if (!nextPoint) {
-        throw gpsFailure || new Error('Não foi possível determinar a localização')
+        throw gpsError || new Error('Não foi possível determinar a localização')
       }
 
       persistPoint(nextPoint)
@@ -341,8 +342,8 @@ export function useGeolocation() {
       if (requestId === requestIdRef.current) {
         setPoint(nextPoint)
         setError(
-          nextPoint.source === 'ip' && gpsFailure
-            ? `${gpsFailure.message} Usando uma estimativa por rede, não GPS.`
+          nextPoint.source === 'ip' && gpsError
+            ? `${gpsError.message} Usando uma estimativa por rede, não GPS.`
             : null
         )
       }
