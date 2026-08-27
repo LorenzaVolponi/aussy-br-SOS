@@ -3,12 +3,19 @@ name: Live Functional Smoke
 on:
   pull_request:
   workflow_dispatch:
+  workflow_run:
+    workflows:
+      - Deploy to Vercel
+    types:
+      - completed
 
 permissions:
   contents: read
 
 jobs:
-  live-smoke:
+  local-smoke:
+    name: Live smoke against local production build
+    if: github.event_name != 'workflow_run'
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -56,7 +63,8 @@ jobs:
         if: always()
         shell: bash
         run: |
-          echo "## Live functional smoke" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Live functional smoke — local production build" >> "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
           echo "- Commit: ${GITHUB_SHA}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Server log tail:" >> "$GITHUB_STEP_SUMMARY"
           echo '```text' >> "$GITHUB_STEP_SUMMARY"
@@ -65,3 +73,35 @@ jobs:
           if [ -f /tmp/aussy-next.pid ]; then
             kill "$(cat /tmp/aussy-next.pid)" 2>/dev/null || true
           fi
+
+  production-smoke:
+    name: Live smoke against deployed production
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout deployed commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Exercise published production routes
+        run: node scripts/test-live-functional-smoke.mjs
+        env:
+          AUSSY_BASE_URL: https://aussy-br-sos.vercel.app
+
+      - name: Publish production smoke summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Live functional smoke — deployed production"
+            echo
+            echo "- Deployment workflow SHA: ${{ github.event.workflow_run.head_sha }}"
+            echo "- Production target: https://aussy-br-sos.vercel.app"
+            echo "- Deployment workflow conclusion: ${{ github.event.workflow_run.conclusion }}"
+          } >> "$GITHUB_STEP_SUMMARY"
