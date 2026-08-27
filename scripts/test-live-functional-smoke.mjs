@@ -132,12 +132,29 @@ await check('INPE fire hotspots live', `/api/queimadas/focos?lat=${LAT}&lon=${LO
   return null
 }, 20000, LIVE_RETRIES)
 
-await check('CelesTrak TLE live', `/api/satellites/tle?lat=${LAT}&lon=${LON}&group=weather&limit=10`, ({ response, body }) => {
-  if (response.status !== 200) return `HTTP ${response.status}: ${body?.error || body?.note || 'unknown error'}`
-  if (body?.dataQuality !== 'live-tle-approx-position') return `unexpected dataQuality ${String(body?.dataQuality)}`
-  if (!Array.isArray(body?.satellites) || body.satellites.length < 1) return 'no TLE-backed satellite returned'
-  if (body?.observer?.lat !== Number(LAT) || body?.observer?.lon !== Number(LON)) return 'observer does not match requested coordinates'
-  return null
+await check('CelesTrak TLE live or explicit unavailable', `/api/satellites/tle?lat=${LAT}&lon=${LON}&group=weather&limit=10`, ({ response, body }) => {
+  if (body?.observer?.lat !== Number(LAT) || body?.observer?.lon !== Number(LON)) {
+    return 'observer does not match requested coordinates'
+  }
+
+  if (response.status === 200) {
+    if (body?.dataQuality !== 'live-tle-approx-position') return `unexpected live dataQuality ${String(body?.dataQuality)}`
+    if (!Array.isArray(body?.satellites) || body.satellites.length < 1) return 'no TLE-backed satellite returned'
+    if (body?.fallback !== false) return 'live orbital response must not claim fallback data'
+    return null
+  }
+
+  if (response.status === 503) {
+    if (body?.dataQuality !== 'unavailable') return `unexpected unavailable dataQuality ${String(body?.dataQuality)}`
+    if (body?.error !== 'unavailable') return `unexpected unavailable error ${String(body?.error)}`
+    if (!Array.isArray(body?.satellites) || body.satellites.length !== 0) return 'unavailable response exposed satellite positions'
+    if (body?.total !== 0 || body?.visible !== 0) return 'unavailable response exposed non-zero orbital counts'
+    if (body?.fallback !== false || body?.cached !== false) return 'unavailable response incorrectly claims fallback or cache'
+    if (!String(body?.note || '').includes('Nenhuma posição sintética é criada')) return 'unavailable response omits synthetic-position safety guarantee'
+    return null
+  }
+
+  return `HTTP ${response.status}: ${body?.error || body?.note || 'unknown error'}`
 }, 15000, LIVE_RETRIES)
 
 await check('network status no server-location leak', '/api/network/status', ({ response, body }) => {
@@ -161,4 +178,4 @@ if (failures.length) {
   process.exit(1)
 }
 
-console.log('\nAussy live functional smoke OK — core live-data routes responded with explicit provenance and no default city')
+console.log('\nAussy live functional smoke OK — core live-data routes responded with explicit provenance, honest degradation and no default city')
