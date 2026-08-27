@@ -1,18 +1,24 @@
 export const READINESS_SNAPSHOT = {
-  schemaVersion: 1,
-  verifiedAt: '2026-08-25',
+  schemaVersion: 2,
+  verifiedAt: '2026-08-27',
   releaseReady: false,
+  webReleaseReady: true,
+  pwaInstalledReleaseReady: false,
   blockers: [
     {
-      id: 'functional-audit-pr-pending',
-      severity: 'blocker',
-      summary: 'A auditoria funcional da PR #56 ainda precisa concluir todos os gates do mesmo head antes do merge.',
+      id: 'installed-pwa-real-device-acceptance',
+      severity: 'pwa-only',
+      summary: 'A versão web está certificada. O modo PWA instalado ainda precisa da aceitação manual ON/OFF em iOS/Safari e Android/Chrome para fechar o comportamento físico do Service Worker no aparelho.',
     },
   ],
   mitigations: [
     {
       id: 'dependency-graph-frozen',
-      summary: 'bun.lock foi gerado pelo próprio Aussy com Bun 1.3.14; Vercel e workflows de release usam frozen install.',
+      summary: 'bun.lock está versionado com Bun 1.3.14; Vercel e workflows de release usam frozen install.',
+    },
+    {
+      id: 'production-web-certified',
+      summary: 'Safety, Quality, Mobile V1, deploy com cooldown e Live Functional Smoke pós-deploy foram executados com sucesso antes desta lapidação final.',
     },
   ],
   trust: {
@@ -20,7 +26,10 @@ export const READINESS_SNAPSHOT = {
     survival: 'source-bounded-static',
     fauna: 'source-bounded-static',
     inmet: 'live-or-last-known-good',
+    storms: 'inmet-live-alerts-plus-met-norway-model-context',
     weather: 'met-norway-live-model-or-last-known-good',
+    rivers: 'sgb-sace-and-ana-official-portals',
+    network: 'browser-network-api-plus-aussy-health-probe',
     eonet: 'live-or-last-known-good',
     geocode: 'live-or-last-known-good',
     fireHotspots: 'inpe-live-or-last-known-good',
@@ -39,8 +48,9 @@ export const READINESS_SNAPSHOT = {
     typeCheck: 'required-by-quality-gate',
     lint: 'required-by-quality-gate',
     nextBuild: 'required-by-quality-gate',
-    liveDataSmoke: 'required-by-live-functional-smoke',
-    browserPwaAcceptance: 'required-by-mobile-v1',
+    browserAutomation: 'mobile-v1-required-on-main',
+    liveDataSmoke: 'post-deploy-production-smoke-required',
+    installedPwaAcceptance: 'manual-real-device-pending',
   },
 } as const
 
