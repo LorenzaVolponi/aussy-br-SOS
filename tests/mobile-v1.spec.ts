@@ -35,12 +35,21 @@ test.describe('Aussy V1 mobile', () => {
     await expect(page.getByRole('button', { name: /Atualizar GPS/i })).toBeVisible()
   })
 
-  test('bottom navigation keeps SOS centered and all primary destinations reachable', async ({ page }) => {
+  test('bottom navigation keeps SOS centered and primary destinations reachable', async ({ page }) => {
     await page.goto('/')
     await expect(page.getByRole('button', { name: /^Início$/i }).last()).toBeVisible()
-    await expect(page.getByRole('button', { name: /^Mapa$/i }).last()).toBeVisible()
+    await expect(page.getByRole('button', { name: /Mapa e rede/i }).last()).toBeVisible()
     await expect(page.getByRole('button', { name: /^SOS$/i }).last()).toBeVisible()
-    await expect(page.getByRole('button', { name: /^Alertas$/i }).last()).toBeVisible()
-    await expect(page.getByRole('button', { name: /^Mais$/i }).last()).toBeVisible()
+    await expect(page.getByRole('button', { name: /Clima e alertas/i }).last()).toBeVisible()
+    await expect(page.getByRole('button', { name: /^Menu$/i }).last()).toBeVisible()
+  })
+
+  test('quick menu separates essential paths from advanced resources', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: /^Menu$/i }).last().click()
+    await expect(page.getByText('Menu rápido AUSSY')).toBeVisible()
+    await expect(page.getByText('Essencial', { exact: true })).toBeVisible()
+    await expect(page.getByText('Explorar', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Rios e natureza/i })).toBeVisible()
   })
 })
