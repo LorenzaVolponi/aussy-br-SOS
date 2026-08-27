@@ -12,11 +12,16 @@ interface NetworkState {
   supported: boolean
 }
 
+// O primeiro render precisa ser idêntico no servidor e no navegador.
+// Node moderno também expõe `navigator`, porém não garante `navigator.onLine`;
+// ler esse valor no initializer fazia o SSR renderizar offline e o celular online.
+const INITIAL_NETWORK_STATE: NetworkState = {
+  online: true,
+  supported: false,
+}
+
 export function useNetworkStatus(): NetworkState {
-  const [state, setState] = useState<NetworkState>({
-    online: typeof navigator !== 'undefined' ? navigator.onLine : true,
-    supported: false,
-  })
+  const [state, setState] = useState<NetworkState>(INITIAL_NETWORK_STATE)
 
   useEffect(() => {
     const update = () => {

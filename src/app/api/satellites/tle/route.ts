@@ -16,7 +16,7 @@ import {
 export const runtime = 'nodejs'
 
 const CELESTRAK_CACHE_SECONDS = 2 * 60 * 60
-const CELESTRAK_TIMEOUT_MS = 15000
+const CELESTRAK_TIMEOUT_MS = 8000
 const SOURCE_HOME = 'https://celestrak.org/NORAD/elements/'
 
 const CELESTRAK_GROUPS: Record<string, string> = {
