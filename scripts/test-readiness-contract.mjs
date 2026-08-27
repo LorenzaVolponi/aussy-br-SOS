@@ -14,26 +14,34 @@ const dependencyFreeze = await readFile(new URL('../.github/workflows/dependency
 const releaseReadiness = await readFile(new URL('../.github/workflows/release-readiness.yml', import.meta.url), 'utf8')
 
 for (const required of [
-  "verifiedAt: '2026-08-25'",
+  "verifiedAt: '2026-08-27'",
   'releaseReady: false',
-  "id: 'functional-audit-pr-pending'",
+  'webReleaseReady: true',
+  'pwaInstalledReleaseReady: false',
+  "id: 'installed-pwa-real-device-acceptance'",
   "id: 'dependency-graph-frozen'",
+  "id: 'production-web-certified'",
   "dependencyLock: 'bun-1.3.14-frozen'",
   "firstAid: 'clinically-curated-static'",
   "satelliteCatalog: 'unverified-static'",
   "satelliteOrbit: 'celestrak-omm-sgp4-live-or-last-known-good'",
   "weather: 'met-norway-live-model-or-last-known-good'",
+  "storms: 'inmet-live-alerts-plus-met-norway-model-context'",
+  "rivers: 'sgb-sace-and-ana-official-portals'",
+  "network: 'browser-network-api-plus-aussy-health-probe'",
   "cemaden: 'official-portal-only'",
   "serviceWorkerSafetyEpoch: 'aussy-v9'",
   "zeroDependencySafetySuite: 'required-by-ci'",
   "nextBuild: 'required-by-quality-gate'",
-  "liveDataSmoke: 'required-by-live-functional-smoke'",
-  "browserPwaAcceptance: 'required-by-mobile-v1'",
+  "liveDataSmoke: 'post-deploy-production-smoke-required'",
+  "browserAutomation: 'mobile-v1-required-on-main'",
+  "installedPwaAcceptance: 'manual-real-device-pending'",
 ]) {
   assert.equal(state.includes(required), true, `readiness snapshot missing invariant: ${required}`)
 }
 
 for (const removed of [
+  "id: 'functional-audit-pr-pending'",
   "id: 'dependency-lock-missing'",
   "id: 'full-build-not-executed'",
   "id: 'service-worker-safety-epoch-v8'",
@@ -81,4 +89,4 @@ assert.equal(existsSync(new URL('./run-safety-suite.mjs', import.meta.url)), tru
 assert.equal(existsSync(new URL('../.github/workflows/safety-suite.yml', import.meta.url)), true, 'Safety Suite workflow missing')
 assert.equal(existsSync(new URL('../.github/workflows/release-readiness.yml', import.meta.url)), true, 'Release Readiness workflow missing')
 
-console.log('Readiness contract OK — dependency graph is frozen; PR #56 remains explicitly pending until all functional gates pass on one head')
+console.log('Readiness contract OK — web release is certified; installed PWA acceptance remains explicitly manual and pending')

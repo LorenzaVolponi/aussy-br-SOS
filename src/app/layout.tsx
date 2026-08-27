@@ -25,9 +25,7 @@ function resolveMetadataBase(): URL {
 
   try {
     const parsed = new URL(candidate);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return new URL(DEFAULT_SITE_URL);
-    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return new URL(DEFAULT_SITE_URL);
     return parsed;
   } catch {
     return new URL(DEFAULT_SITE_URL);
@@ -40,13 +38,13 @@ const jetMono = JetBrains_Mono({ variable: "--font-jet-mono", subsets: ["latin"]
 
 export const metadata: Metadata = {
   metadataBase: resolveMetadataBase(),
-  title: "Aussy Ontech — Operadora de Resiliência Orbital",
-  description: "Plataforma offline-first de resiliência para o Brasil: SOS, guias locais, mapas preparados para offline, geolocalização, clima e alertas com cache, Defesa Civil e dados orbitais com transparência de origem.",
-  keywords: ["satélite", "D2C", "Direct-to-Cell", "emergência", "SOS", "offline", "internet rural", "Brasil", "ANATEL", "INMET", "CEMADEN", "CPTEC", "INPE", "ANA", "IBGE", "Defesa Civil", "SEDEC", "WiFi grátis", "Aussy Ontech"],
-  authors: [{ name: "Aussy Ontech" }],
+  title: "AUSSY.SOS — Segurança, emergência e resiliência",
+  description: "Acesso rápido a SOS, alertas oficiais, localização, mapas, clima, rios e recursos de resiliência para o Brasil, com cache identificado e transparência de origem.",
+  keywords: ["emergência", "SOS", "offline", "resiliência", "Brasil", "INMET", "CEMADEN", "CPTEC", "INPE", "ANA", "SGB", "Defesa Civil", "mapa", "localização", "conectividade", "satélite", "AUSSY.SOS"],
+  authors: [{ name: "AUSSY.SOS" }],
   manifest: "/manifest.json",
-  applicationName: "Aussy Ontech",
-  appleWebApp: { capable: true, statusBarStyle: "default", title: "Aussy Ontech" },
+  applicationName: "AUSSY.SOS",
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "AUSSY.SOS" },
   icons: {
     icon: [
       { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
@@ -59,17 +57,17 @@ export const metadata: Metadata = {
     shortcut: ["/favicon-32.png"],
   },
   openGraph: {
-    title: "Aussy Ontech — Resiliência e emergência offline-first",
-    description: "SOS, mapas offline, última posição conhecida, alertas com cache e ferramentas de resiliência para operação com e sem rede.",
+    title: "AUSSY.SOS — Segurança e resiliência",
+    description: "SOS, alertas oficiais, mapas, localização, clima e recursos de resiliência com origem e cache identificados.",
     type: "website",
     locale: "pt_BR",
-    siteName: "Aussy Ontech",
+    siteName: "AUSSY.SOS",
     images: [{ url: "/icon-512.png", width: 512, height: 512 }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Aussy Ontech — Resiliência offline-first",
-    description: "SOS, mapas preparados para offline, cache de dados críticos e recuperação automática de rede.",
+    title: "AUSSY.SOS — Segurança e resiliência",
+    description: "SOS, alertas oficiais, mapas, localização e recursos de resiliência com transparência de fonte.",
     images: ["/icon-512.png"],
   },
   robots: { index: true, follow: true, googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1 } },
@@ -78,7 +76,7 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f6f8fb" },
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
     { media: "(prefers-color-scheme: dark)", color: "#090b0d" },
   ],
   width: "device-width",
@@ -95,9 +93,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <head>
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="Aussy Ontech" />
+        <meta name="apple-mobile-web-app-title" content="AUSSY.SOS" />
         <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="msapplication-TileColor" content="#f6f8fb" />
+        <meta name="msapplication-TileColor" content="#ffffff" />
         <meta name="geo.region" content="BR" />
         <meta name="geo.placename" content="Brasil" />
         <meta httpEquiv="Permissions-Policy" content="geolocation=(self), microphone=(), camera=(), accelerometer=(self), gyroscope=(self), magnetometer=(self), ambient-light-sensor=(self)" />

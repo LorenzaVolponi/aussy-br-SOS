@@ -1,18 +1,7 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import {
-  Flame,
-  CloudRain,
-  RefreshCw,
-  Loader2,
-  AlertTriangle,
-  MapPin,
-  Clock,
-  CloudOff,
-  Crosshair,
-  ExternalLink,
-} from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { Flame, CloudRain, RefreshCw, Loader2, AlertTriangle, MapPin, Clock, CloudOff, ExternalLink, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -32,11 +21,7 @@ interface FocoQueimada {
   risco: 'Baixo' | 'Médio' | 'Alto' | 'Crítico'
 }
 
-interface OfficialPortal {
-  name: string
-  url: string
-}
-
+interface OfficialPortal { name: string; url: string }
 interface CemadenResponse {
   online: false
   automationAvailable: false
@@ -52,36 +37,20 @@ interface CemadenResponse {
   verifiedAt: string
   portals: OfficialPortal[]
 }
-
-interface QueimadasResponse {
-  focos: FocoQueimada[]
-  total: number
-  raio: number
-  error?: string
-  message?: string
-  fetchedAt: string
-  source?: string
-}
+interface QueimadasResponse { focos: FocoQueimada[]; total: number; raio: number; error?: string; message?: string; fetchedAt: string; source?: string }
 
 const RISCO_COLORS: Record<string, string> = {
-  Baixo: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300',
-  Médio: 'border-yellow-500/40 bg-yellow-500/10 text-yellow-300',
-  Alto: 'border-orange-500/40 bg-orange-500/10 text-orange-300',
-  Crítico: 'border-red-500/40 bg-red-500/10 text-red-300 blink-emergency',
+  Baixo: 'border-emerald-300 bg-emerald-50 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/25 dark:text-emerald-200',
+  Médio: 'border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/25 dark:text-amber-200',
+  Alto: 'border-orange-300 bg-orange-50 text-orange-950 dark:border-orange-800 dark:bg-orange-950/25 dark:text-orange-200',
+  Crítico: 'border-red-300 bg-red-50 text-red-950 dark:border-red-800 dark:bg-red-950/25 dark:text-red-200',
 }
 
 function formatDate(iso: string): string {
   if (!iso) return ''
-  try {
-    return new Date(iso).toLocaleString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  } catch {
-    return iso
-  }
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return iso
+  return date.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
 export function CemadenAlerts() {
@@ -96,8 +65,7 @@ export function CemadenAlerts() {
     try {
       const res = await fetch('/api/cemaden/alerts', { cache: 'no-store' })
       if (!res.ok) throw new Error('CEMADEN reference unavailable')
-      const json: CemadenResponse = await res.json()
-      setCemaden(json)
+      setCemaden(await res.json())
     } catch {
       if (!silent) toast.error('Não foi possível carregar os canais oficiais CEMADEN')
     } finally {
@@ -111,14 +79,13 @@ export function CemadenAlerts() {
       setLoadingQueimadas(false)
       return
     }
-
     if (!silent) setLoadingQueimadas(true)
     try {
       const res = await fetch(`/api/queimadas/focos?lat=${point.lat}&lon=${point.lon}&raio=200`, { cache: 'no-store' })
       const json: QueimadasResponse = await res.json()
       setQueimadas(json)
       if (!silent && !json.error && json.total > 0) {
-        const proximos = json.focos.filter((f) => (f.distanciaKm ?? 9999) < 50).length
+        const proximos = json.focos.filter((foco) => (foco.distanciaKm ?? 9999) < 50).length
         if (proximos > 0) toast.warning(`${proximos} foco(s) de queimada a menos de 50 km`)
       }
     } catch {
@@ -128,209 +95,59 @@ export function CemadenAlerts() {
     }
   }, [point])
 
+  useEffect(() => { void fetchCemaden() }, [fetchCemaden])
+  useEffect(() => { if (point) void fetchQueimadas(); else setQueimadas(null) }, [point, fetchQueimadas])
   useEffect(() => {
-    fetchCemaden()
-  }, [fetchCemaden])
-
-  useEffect(() => {
-    if (point) fetchQueimadas()
-    else {
-      setQueimadas(null)
-      setLoadingQueimadas(false)
-    }
-  }, [point, fetchQueimadas])
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchCemaden(true)
-      if (point) fetchQueimadas(true)
-    }, 30 * 60 * 1000)
-    return () => clearInterval(interval)
+    const interval = window.setInterval(() => { void fetchCemaden(true); if (point) void fetchQueimadas(true) }, 30 * 60 * 1000)
+    return () => window.clearInterval(interval)
   }, [fetchCemaden, fetchQueimadas, point])
 
   const totalFocos = queimadas?.total || 0
 
   return (
-    <Card className="border-red-500/20 bg-red-500/5">
+    <Card className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
       <CardHeader className="pb-3">
-        <CardTitle className="flex items-center justify-between text-sm gap-3">
-          <span className="flex items-center gap-2">
-            <Flame className="h-4 w-4 text-red-400" />
-            Desastres Naturais — CEMADEN oficial + INPE Fogo
-          </span>
-          <Button
-            onClick={() => {
-              fetchCemaden()
-              if (point) fetchQueimadas()
-            }}
-            size="sm"
-            variant="ghost"
-            className="h-7 text-xs"
-            disabled={loadingCemaden || loadingQueimadas}
-          >
-            {(loadingCemaden || loadingQueimadas) ? (
-              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-            ) : (
-              <RefreshCw className="h-3 w-3 mr-1" />
-            )}
-            Atualizar
-          </Button>
-        </CardTitle>
+        <div className="flex items-start justify-between gap-3">
+          <div><CardTitle className="flex items-center gap-2 text-base text-slate-950 dark:text-slate-50"><AlertTriangle className="h-5 w-5 text-orange-700 dark:text-orange-300" />Riscos naturais · fontes oficiais</CardTitle><p className="mt-1 text-sm leading-5 text-slate-600 dark:text-slate-400">INPE para focos de fogo e CEMADEN como referência oficial de monitoramento e risco.</p></div>
+          <Button onClick={() => { void fetchCemaden(); if (point) void fetchQueimadas() }} size="icon" variant="ghost" className="h-11 w-11 flex-shrink-0" disabled={loadingCemaden || loadingQueimadas} aria-label="Atualizar riscos naturais">{loadingCemaden || loadingQueimadas ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}</Button>
+        </div>
       </CardHeader>
 
-      <CardContent className="space-y-4">
-        {totalFocos > 0 && (
-          <div className="flex items-center gap-3 p-3 rounded-lg border border-red-500/30 bg-red-500/10">
-            <AlertTriangle className="h-5 w-5 text-red-400 flex-shrink-0" />
-            <div className="flex-1">
-              <div className="text-sm font-bold text-red-300">
-                {totalFocos} foco(s) de queimada no raio consultado
-              </div>
-              <div className="text-[11px] text-red-300/70">
-                Fonte INPE. O CEMADEN é consultado pelos portais oficiais abaixo, sem contagem automatizada nesta build.
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 text-xs font-medium text-orange-400">
-            <Flame className="h-3.5 w-3.5" />
-            Focos de Queimada — INPE
-            {point && (
-              <span className="text-[10px] text-muted-foreground font-mono-jet ml-1">
-                (raio {queimadas?.raio || 200} km)
-              </span>
-            )}
-          </div>
+      <CardContent className="space-y-5">
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100"><Flame className="h-4 w-4 text-red-700 dark:text-red-300" />Focos de queimada · INPE</div>{point && <Badge variant="outline" className="px-2 py-1 text-xs">raio {queimadas?.raio || 200} km</Badge>}</div>
 
           {!point ? (
-            <div className="flex items-start gap-2 p-2 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[11px]">
-              <MapPin className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
-              <span>Aguardando localização válida. Nenhuma cidade padrão é assumida para consultar queimadas.</span>
-            </div>
+            <div className="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm leading-5 text-blue-950 dark:border-blue-900/60 dark:bg-blue-950/20 dark:text-blue-200"><MapPin className="mt-0.5 h-4 w-4 flex-shrink-0" /><span><strong>Aguardando localização válida.</strong> Nenhuma cidade padrão é assumida para consultar queimadas.</span></div>
           ) : queimadas?.error ? (
-            <div className="flex items-start gap-2 p-2 rounded bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[11px]">
-              <CloudOff className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
-              <span>{queimadas.message || 'Dados de queimadas indisponíveis.'}</span>
-            </div>
+            <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200"><CloudOff className="mt-0.5 h-4 w-4 flex-shrink-0" /><span>{queimadas.message || 'Dados de queimadas indisponíveis.'}</span></div>
           ) : loadingQueimadas ? (
-            <div className="text-xs text-muted-foreground text-center py-3 flex items-center justify-center gap-2">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Buscando focos de queimada próximos...
-            </div>
-          ) : queimadas && queimadas.focos.length === 0 ? (
-            <div className="text-center py-3 px-3">
-              <Flame className="h-5 w-5 text-emerald-400/50 mx-auto mb-1.5" />
-              <p className="text-xs text-emerald-400">Nenhum foco retornado pela consulta atual neste raio</p>
-              <p className="text-[10px] text-muted-foreground mt-1">Isso descreve apenas a resposta da fonte para esta consulta, não uma garantia de ausência de incêndio.</p>
-            </div>
+            <div className="flex items-center justify-center gap-2 py-4 text-sm text-slate-600 dark:text-slate-400"><Loader2 className="h-4 w-4 animate-spin" />Buscando focos na fonte oficial…</div>
+          ) : totalFocos === 0 ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-5 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">A consulta atual do INPE não retornou focos neste raio. Isso não é garantia de ausência de incêndio.</div>
           ) : (
-            <div className="space-y-1.5 max-h-48 overflow-y-auto">
-              {(queimadas?.focos || []).slice(0, 8).map((foco) => {
-                const riscoClass = RISCO_COLORS[foco.risco] || ''
-                return (
-                  <div
-                    key={foco.id}
-                    className={`p-2 rounded-lg border ${riscoClass}`}
-                    style={{ borderLeftWidth: '3px', borderLeftColor: '#ef4444' }}
-                  >
-                    <div className="flex items-start gap-2">
-                      <Flame className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 mb-0.5">
-                          <span className="font-medium text-xs">{foco.municipio || 'Sem município'}</span>
-                          {foco.uf && (
-                            <Badge variant="outline" className="text-[9px] font-mono-jet px-1 py-0 h-4">
-                              {foco.uf}
-                            </Badge>
-                          )}
-                          {foco.distanciaKm !== undefined && (
-                            <span className="text-[10px] font-mono-jet opacity-70">{foco.distanciaKm} km</span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 text-[10px] opacity-70">
-                          <span className="flex items-center gap-0.5">
-                            <MapPin className="h-2.5 w-2.5" />
-                            {foco.bioma}
-                          </span>
-                          <span className="font-mono-jet">sat: {foco.satellite}</span>
-                        </div>
-                        <div className="flex items-center gap-2 mt-1 text-[10px] opacity-70">
-                          <span className="flex items-center gap-0.5">
-                            <Clock className="h-2.5 w-2.5" />
-                            {formatDate(foco.dataHora)}
-                          </span>
-                          <Badge variant="outline" className={`text-[9px] font-mono-jet px-1 py-0 h-4 ${riscoClass}`}>
-                            risco {foco.risco}
-                          </Badge>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-              {(queimadas?.focos || []).length > 8 && (
-                <p className="text-[10px] text-muted-foreground text-center pt-1">
-                  +{queimadas!.focos.length - 8} focos adicionais
-                </p>
-              )}
+            <div className="space-y-2">
+              <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-950 dark:border-red-900/60 dark:bg-red-950/25 dark:text-red-200">{totalFocos} foco(s) retornado(s) pelo INPE no raio consultado.</div>
+              <div className="max-h-64 space-y-2 overflow-y-auto pr-1">{(queimadas?.focos || []).slice(0, 8).map((foco) => (
+                <article key={foco.id} className={`rounded-xl border p-3 ${RISCO_COLORS[foco.risco] || RISCO_COLORS.Médio}`}>
+                  <div className="flex items-start gap-2"><Flame className="mt-0.5 h-4 w-4 flex-shrink-0" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className="text-sm font-semibold">{foco.municipio || 'Sem município'}</span>{foco.uf && <Badge variant="outline" className="px-2 py-0.5 text-xs">{foco.uf}</Badge>}{foco.distanciaKm !== undefined && <span className="text-xs font-medium">{foco.distanciaKm} km</span>}</div><div className="mt-1 text-xs leading-5 opacity-80">{foco.bioma} · satélite {foco.satellite} · {formatDate(foco.dataHora)} · risco {foco.risco}</div></div></div>
+                </article>
+              ))}</div>
             </div>
           )}
-        </div>
+        </section>
 
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 text-xs font-medium text-cyan-400">
-            <CloudRain className="h-3.5 w-3.5" />
-            CEMADEN / MCTI — canais oficiais
-            <Badge variant="outline" className="text-[9px] border-cyan-500/30 text-cyan-300">PORTAL OFICIAL</Badge>
-          </div>
+        <section className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800">
+          <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100"><CloudRain className="h-4 w-4 text-blue-800 dark:text-blue-300" />CEMADEN / MCTI — canais oficiais<Badge variant="outline" className="border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300"><ShieldCheck className="mr-1 h-3.5 w-3.5" /> PORTAL OFICIAL</Badge></div>
 
-          {loadingCemaden ? (
-            <div className="text-xs text-muted-foreground text-center py-3 flex items-center justify-center gap-2">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Carregando referências oficiais CEMADEN...
-            </div>
-          ) : !cemaden ? (
-            <div className="flex items-start gap-2 p-2 rounded bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[11px]">
-              <CloudOff className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
-              <span>Não foi possível carregar as referências oficiais CEMADEN agora.</span>
-            </div>
-          ) : (
-            <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3 space-y-3">
-              <div className="text-[11px] text-muted-foreground leading-relaxed">
-                {cemaden.note}
-              </div>
-              <div className="grid gap-2 sm:grid-cols-3">
-                {cemaden.portals.map((portal) => (
-                  <a
-                    key={portal.url}
-                    href={portal.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center justify-between gap-2 rounded-md border border-border/50 px-2.5 py-2 text-[11px] hover:bg-muted/30"
-                  >
-                    <span>{portal.name}</span>
-                    <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                  </a>
-                ))}
-              </div>
-              <div className="text-[10px] text-muted-foreground/70">
-                Fonte: {cemaden.source} · verificado em {cemaden.verifiedAt}
-              </div>
+          {loadingCemaden ? <div className="flex items-center justify-center gap-2 py-4 text-sm text-slate-600 dark:text-slate-400"><Loader2 className="h-4 w-4 animate-spin" />Carregando referências oficiais…</div> : !cemaden ? <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200">Não foi possível carregar as referências oficiais CEMADEN agora.</div> : (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900">
+              <p className="text-sm leading-5 text-slate-700 dark:text-slate-300">{cemaden.note}</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-3">{cemaden.portals.map((portal) => <a key={portal.url} href={portal.url} target="_blank" rel="noreferrer" className="flex min-h-12 items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-blue-800 hover:border-blue-300 hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-950 dark:text-blue-300"><span>{portal.name}</span><ExternalLink className="h-4 w-4 flex-shrink-0" /></a>)}</div>
+              <p className="mt-3 text-xs text-slate-600 dark:text-slate-400">Fonte: {cemaden.source} · verificado em {cemaden.verifiedAt}. O Aussy não transforma uma lista vazia de portal em “sem alertas”.</p>
             </div>
           )}
-        </div>
-
-        <div className="flex items-center justify-between pt-2 border-t border-border/30 text-[10px] text-muted-foreground/60">
-          <span className="flex items-center gap-1">
-            <Crosshair className="h-2.5 w-2.5" />
-            CEMADEN oficial · INPE Queimadas
-          </span>
-          <span className="font-mono-jet">
-            {cemaden ? `ref. ${cemaden.verifiedAt}` : 'referência não carregada'}
-          </span>
-        </div>
+        </section>
       </CardContent>
     </Card>
   )

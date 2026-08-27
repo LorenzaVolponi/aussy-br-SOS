@@ -1,29 +1,43 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
 import { useNetworkStatus, useLatencyProbe, useDeviceCapabilities } from '@/hooks/use-network'
 import {
   Wifi,
   WifiOff,
   Activity,
   Smartphone,
-  Satellite,
   Bluetooth,
   MapPin,
   Clock,
-  Zap,
+  Gauge,
   Radio,
   AlertTriangle,
+  ShieldCheck,
 } from 'lucide-react'
+
+interface ServerStatus {
+  isp?: string | null
+  country?: string | null
+  dataQuality?: string
+}
+
+function networkTypeLabel(type?: string, effectiveType?: string) {
+  if (type === 'wifi') return 'Wi‑Fi'
+  if (type === 'cellular') return `Rede móvel${effectiveType ? ` · ${effectiveType.toUpperCase()}` : ''}`
+  if (type === 'ethernet') return 'Ethernet'
+  if (type) return type
+  if (effectiveType) return `Link ${effectiveType.toUpperCase()}`
+  return 'Não exposto pelo navegador'
+}
 
 export function NetworkMonitor() {
   const network = useNetworkStatus()
-  const { latency, isReachable, lastCheck } = useLatencyProbe('/api/network/status', 10000)
+  const { latency, isReachable, lastCheck } = useLatencyProbe('/api/health', 10000)
   const caps = useDeviceCapabilities()
-  const [serverStatus, setServerStatus] = useState<any>(null)
+  const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null)
 
   useEffect(() => {
     if (!network.online) {
@@ -35,12 +49,12 @@ export function NetworkMonitor() {
     const timeout = window.setTimeout(() => controller.abort(), 5000)
 
     fetch('/api/network/status', { cache: 'no-store', signal: controller.signal })
-      .then((r) => {
-        const cached = r.headers.get('X-Aussy-Cached') === 'true' || r.headers.get('X-Aussy-Offline') === 'true'
-        if (!r.ok || cached) throw new Error('Status não é uma leitura de rede ao vivo')
-        return r.json()
+      .then((response) => {
+        const cached = response.headers.get('X-Aussy-Cached') === 'true' || response.headers.get('X-Aussy-Offline') === 'true'
+        if (!response.ok || cached) throw new Error('Status de rede não confirmado ao vivo')
+        return response.json()
       })
-      .then(setServerStatus)
+      .then((payload) => setServerStatus(payload))
       .catch(() => setServerStatus(null))
       .finally(() => window.clearTimeout(timeout))
 
@@ -50,189 +64,134 @@ export function NetworkMonitor() {
     }
   }, [network.online])
 
-  const quality = !network.online || isReachable === false
-    ? 0
-    : !latency
-    ? 0
-    : latency < 50
-    ? 100
-    : latency < 150
-    ? 80
-    : latency < 300
-    ? 60
-    : latency < 600
-    ? 35
-    : 15
+  const quality = useMemo(() => {
+    if (!network.online || isReachable === false || latency === null) return 0
+    if (latency < 80) return 100
+    if (latency < 180) return 80
+    if (latency < 350) return 60
+    if (latency < 700) return 35
+    return 15
+  }, [network.online, isReachable, latency])
 
-  const qualityLabel = quality === 0 ? 'OFFLINE' : quality >= 80 ? 'EXCELENTE' : quality >= 60 ? 'BOM' : quality >= 35 ? 'LENTO' : 'CRÍTICO'
-  const qualityColor = quality === 0 ? 'text-red-400' : quality >= 60 ? 'text-emerald-400' : quality >= 35 ? 'text-amber-400' : 'text-red-400'
+  const qualityLabel = quality === 0
+    ? network.online && isReachable === null ? 'VERIFICANDO' : 'SEM ACESSO'
+    : quality >= 80 ? 'ÓTIMO'
+      : quality >= 60 ? 'BOM'
+        : quality >= 35 ? 'LENTO' : 'CRÍTICO'
+
+  const typeLabel = networkTypeLabel(network.type, network.effectiveType)
 
   return (
     <div className="space-y-4">
-      <Card className="glass-card border-signal/30">
+      <Card className="glass-card">
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2 text-base">
-              {network.online ? <Wifi className="h-5 w-5 text-signal" /> : <WifiOff className="h-5 w-5 text-red-400 blink-emergency" />}
-              Status da Conexão
-            </CardTitle>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base text-slate-950 dark:text-slate-50">
+                {network.online ? <Wifi className="h-5 w-5 text-blue-700 dark:text-blue-300" /> : <WifiOff className="h-5 w-5 text-red-700 dark:text-red-300" />}
+                Rede e conectividade
+              </CardTitle>
+              <p className="mt-1 text-sm leading-5 text-slate-600 dark:text-slate-400">Medição do navegador e teste real de acesso ao Aussy.</p>
+            </div>
             <Badge
+              aria-live="polite"
               variant="outline"
               className={network.online
-                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                : 'bg-red-500/10 text-red-400 border-red-500/30 blink-emergency'}
+                ? 'border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300'
+                : 'border-red-300 bg-red-50 px-2 py-1 text-xs font-semibold text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300'}
             >
               {network.online ? 'ONLINE' : 'OFFLINE'}
             </Badge>
           </div>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div>
-            <div className="flex justify-between items-baseline mb-1.5">
-              <span className="text-xs text-muted-foreground font-mono-jet uppercase tracking-wider">Qualidade do link</span>
-              <span className={`font-mono-jet font-bold text-lg ${qualityColor}`}>{qualityLabel}</span>
-            </div>
-            <Progress value={quality} className="h-2" />
-          </div>
 
-          <div className="grid grid-cols-2 gap-3 mt-3">
-            <MetricCard
-              icon={<Activity className="h-4 w-4" />}
-              label="Latência"
-              value={latency ? `${latency} ms` : '—'}
-              color={latency && latency < 150 ? 'text-emerald-400' : 'text-amber-400'}
-            />
-            <MetricCard
-              icon={<Zap className="h-4 w-4" />}
-              label="Velocidade"
-              value={network.downlink ? `${network.downlink} Mbps` : network.effectiveType || '—'}
-              color="text-signal"
-            />
-            <MetricCard
-              icon={<Radio className="h-4 w-4" />}
-              label="Tipo"
-              value={network.type || network.effectiveType || 'desconhecido'}
-              color="text-orbit"
-            />
-            <MetricCard
-              icon={<Clock className="h-4 w-4" />}
-              label="Última verif."
-              value={lastCheck ? lastCheck.toLocaleTimeString('pt-BR') : '—'}
-              color="text-muted-foreground"
-            />
-          </div>
-
-          {network.online && serverStatus?.externalIp && (
-            <div className="mt-3 pt-3 border-t border-border/50">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">IP externo detectado</span>
-                <span className="font-mono-jet text-foreground">{serverStatus.externalIp}</span>
+        <CardContent className="space-y-4">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-600 dark:text-slate-400">Acesso ao Aussy</p>
+                <div className="mt-1 text-xl font-semibold text-slate-950 dark:text-slate-50" aria-live="polite">{qualityLabel}</div>
               </div>
-              {serverStatus.isp && (
-                <div className="flex items-center justify-between text-xs mt-1">
-                  <span className="text-muted-foreground">Operadora / ISP</span>
-                  <span className="font-mono-jet text-foreground">{serverStatus.isp}</span>
-                </div>
-              )}
-              {serverStatus.country && (
-                <div className="flex items-center justify-between text-xs mt-1">
-                  <span className="text-muted-foreground">País</span>
-                  <span className="font-mono-jet text-foreground">{serverStatus.country}</span>
-                </div>
-              )}
+              <div className="text-right">
+                <p className="text-xs text-slate-600 dark:text-slate-400">Latência aparelho → Aussy</p>
+                <p className="mt-1 font-mono text-base font-semibold text-slate-950 dark:text-slate-50">{latency !== null ? `${latency} ms` : '—'}</p>
+              </div>
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800" aria-hidden="true">
+              <div className="h-full rounded-full bg-blue-700 transition-[width] dark:bg-blue-400" style={{ width: `${quality}%` }} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <MetricCard icon={<Radio className="h-4 w-4" />} label="Tipo" value={typeLabel} />
+            <MetricCard icon={<Gauge className="h-4 w-4" />} label="Downlink" value={typeof network.downlink === 'number' ? `${network.downlink} Mbps` : 'Não exposto'} />
+            <MetricCard icon={<Activity className="h-4 w-4" />} label="RTT do navegador" value={typeof network.rtt === 'number' ? `${network.rtt} ms` : 'Não exposto'} />
+            <MetricCard icon={<Clock className="h-4 w-4" />} label="Último teste" value={lastCheck ? lastCheck.toLocaleTimeString('pt-BR') : '—'} />
+          </div>
+
+          {(serverStatus?.isp || serverStatus?.country) && (
+            <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm dark:border-slate-800 dark:bg-slate-950">
+              <div className="flex items-center gap-2 font-semibold text-slate-900 dark:text-slate-100"><ShieldCheck className="h-4 w-4 text-emerald-700 dark:text-emerald-300" /> Rede pública estimada</div>
+              <div className="mt-2 grid gap-1 text-xs text-slate-600 dark:text-slate-400 sm:grid-cols-2">
+                {serverStatus.isp && <span>Operadora/ISP: <strong className="text-slate-800 dark:text-slate-200">{serverStatus.isp}</strong></span>}
+                {serverStatus.country && <span>País: <strong className="text-slate-800 dark:text-slate-200">{serverStatus.country}</strong></span>}
+              </div>
             </div>
           )}
 
+          <div className="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm leading-5 text-blue-950 dark:border-blue-900/60 dark:bg-blue-950/20 dark:text-blue-200">
+            <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            <p><strong>Wi‑Fi sem invenção:</strong> navegadores não expõem uma lista confiável de SSIDs próximos para uma página web. O Aussy não simula redes disponíveis; mostra apenas o tipo/qualidade que o próprio navegador consegue informar.</p>
+          </div>
+
           {network.saveData && (
-            <div className="flex items-center gap-2 text-xs text-amber-400 mt-2 pt-2 border-t border-border/50">
-              <AlertTriangle className="h-3.5 w-3.5" />
-              Modo Economia de Dados ativo — algumas APIs podem ser limitadas
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200">
+              Modo Economia de Dados ativo — algumas consultas externas podem ser reduzidas pelo dispositivo.
             </div>
           )}
         </CardContent>
       </Card>
 
-      <Card className="glass-card border-border/40">
+      <Card className="glass-card">
         <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Smartphone className="h-5 w-5 text-signal" />
-            Capacidades do Dispositivo
+          <CardTitle className="flex items-center gap-2 text-base text-slate-950 dark:text-slate-50">
+            <Smartphone className="h-5 w-5 text-blue-700 dark:text-blue-300" />
+            Capacidades deste dispositivo
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 gap-2">
-            <CapabilityChip
-              icon={<Satellite className="h-3.5 w-3.5" />}
-              label="SOS via Satélite"
-              active={caps.hasSatelliteSos}
-              hint={caps.hasSatelliteSos ? 'Compatibilidade estimada pelo dispositivo; confirme no sistema operacional' : 'Não detectado por este navegador'}
-            />
-            <CapabilityChip
-              icon={<Bluetooth className="h-3.5 w-3.5" />}
-              label="Bluetooth Web"
-              active={caps.hasBluetooth}
-              hint={caps.hasBluetooth ? 'Web Bluetooth disponível no navegador' : 'Web Bluetooth não exposto pelo navegador'}
-            />
-            <CapabilityChip
-              icon={<MapPin className="h-3.5 w-3.5" />}
-              label="Geolocalização"
-              active={caps.hasGeolocation}
-              hint={caps.hasGeolocation ? 'API de geolocalização disponível' : 'API de geolocalização indisponível'}
-            />
-            <CapabilityChip
-              icon={<Radio className="h-3.5 w-3.5" />}
-              label="Dispositivo móvel"
-              active={caps.hasCellBroadcast}
-              hint={caps.hasCellBroadcast ? 'Dispositivo móvel detectado; Cell Broadcast depende do sistema e operadora' : 'Navegador não indica dispositivo móvel'}
-            />
-            <CapabilityChip
-              icon={<Activity className="h-3.5 w-3.5" />}
-              label="Service Worker"
-              active={caps.hasServiceWorker}
-              hint={caps.hasServiceWorker ? 'Tecnologia de cache offline suportada' : 'Sem suporte a Service Worker'}
-            />
-            <CapabilityChip
-              icon={<Zap className="h-3.5 w-3.5" />}
-              label="Background Sync"
-              active={caps.hasBackgroundSync}
-              hint={caps.hasBackgroundSync ? 'Background Sync exposto pelo navegador' : 'Não suportado; recuperação online continua pelo evento online'}
-            />
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <CapabilityChip icon={<MapPin className="h-4 w-4" />} label="Geolocalização" active={caps.hasGeolocation} />
+            <CapabilityChip icon={<Bluetooth className="h-4 w-4" />} label="Web Bluetooth" active={caps.hasBluetooth} />
+            <CapabilityChip icon={<Activity className="h-4 w-4" />} label="Service Worker" active={caps.hasServiceWorker} />
+            <CapabilityChip icon={<Radio className="h-4 w-4" />} label="Network Information API" active={network.supported} />
+            <CapabilityChip icon={<Gauge className="h-4 w-4" />} label="Background Sync" active={caps.hasBackgroundSync} />
+            <CapabilityChip icon={<Smartphone className="h-4 w-4" />} label={`Plataforma: ${caps.platform || '—'}`} active />
           </div>
-
-          <div className="mt-3 pt-3 border-t border-border/50 text-xs text-muted-foreground">
-            <div className="flex justify-between">
-              <span>Plataforma</span>
-              <span className="font-mono-jet text-foreground">{caps.platform}</span>
-            </div>
-          </div>
+          <p className="mt-3 border-t border-slate-200 pt-3 text-xs leading-5 text-slate-600 dark:border-slate-800 dark:text-slate-400">
+            Fonte: APIs do próprio navegador. Recursos que o sistema operacional não expõe à Web permanecem como “não disponíveis”, sem inferência por modelo de aparelho.
+          </p>
         </CardContent>
       </Card>
     </div>
   )
 }
 
-function MetricCard({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: string; color: string }) {
+function MetricCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="rounded-lg bg-secondary/30 p-2.5 border border-border/30">
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-        {icon}
-        <span className="uppercase tracking-wide">{label}</span>
-      </div>
-      <div className={`font-mono-jet font-bold text-sm ${color}`}>{value}</div>
+    <div className="min-h-[86px] rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950">
+      <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400">{icon}<span>{label}</span></div>
+      <div className="mt-2 break-words text-sm font-semibold text-slate-950 dark:text-slate-50">{value}</div>
     </div>
   )
 }
 
-function CapabilityChip({ icon, label, active, hint }: { icon: React.ReactNode; label: string; active: boolean; hint: string }) {
+function CapabilityChip({ icon, label, active }: { icon: React.ReactNode; label: string; active: boolean }) {
   return (
-    <div
-      className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs border ${active
-        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-        : 'bg-muted/30 border-border/30 text-muted-foreground'}`}
-      title={hint}
-    >
-      {icon}
-      <span className="font-medium truncate">{label}</span>
+    <div className={`flex min-h-[48px] items-center gap-2 rounded-xl border px-3 py-2 text-sm ${active
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/20 dark:text-emerald-200'
+      : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400'}`}>
+      {icon}<span className="font-medium">{label}</span>
     </div>
   )
 }

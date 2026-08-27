@@ -1,36 +1,32 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Waves, RefreshCw, MapPin, AlertTriangle, ExternalLink } from 'lucide-react'
+import { Waves, RefreshCw, ExternalLink, ShieldCheck, AlertTriangle } from 'lucide-react'
 
-interface EstacaoRios {
-  codigo: string
-  nome: string
-  rio: string
-  uf: string
-  lat: number
-  lon: number
-  nivel_atual: null
-  nivel_acima_abaixo: null
-  tendencia: 'desconhecido'
-  atualizado: null
-  distancia: number
+interface HydrologySource {
+  id: string
+  name: string
+  organization: string
+  url: string
+  kind: string
+  description: string
+  recommended: boolean
 }
 
-interface AnaRiosResponse {
+interface RiversResponse {
   online: boolean
-  dataQuality: 'reference-location-only'
-  verifiedAt: string
-  fonte: string
-  total: number
-  estacoes: EstacaoRios[]
-  atualizado_em: null
-  officialApi: string
-  aviso: string
+  automationAvailable: false
+  dataQuality: 'official-portals-only' | 'unavailable'
+  verifiedAt?: string
+  source: string
+  reference: { lat: number; lon: number } | null
+  sources: HydrologySource[]
+  error?: string | null
+  note: string
 }
 
 interface Props {
@@ -39,37 +35,36 @@ interface Props {
 }
 
 export function AnaRios({ lat, lon }: Props) {
-  const [data, setData] = useState<AnaRiosResponse | null>(null)
+  const [data, setData] = useState<RiversResponse | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const fetchRios = async () => {
+  const fetchSources = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/ana/rios?lat=${lat}&lon=${lon}&raio=500`)
-      const json = await res.json()
+      const res = await fetch(`/api/ana/rios?lat=${lat}&lon=${lon}`, { cache: 'no-store' })
+      const json: RiversResponse = await res.json()
       setData(json)
     } catch {
       setData(null)
     } finally {
       setLoading(false)
     }
-  }
+  }, [lat, lon])
 
   useEffect(() => {
-    void fetchRios()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lat, lon])
+    void fetchSources()
+  }, [fetchSources])
 
   if (loading) {
     return (
-      <Card className="border-blue-500/30 bg-gradient-to-br from-blue-950/40 to-background/60">
+      <Card className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-blue-200 text-sm">
-            <Waves className="h-4 w-4" />
-            Rios e estações fluviométricas
+          <CardTitle className="flex items-center gap-2 text-base text-slate-900 dark:text-slate-100">
+            <Waves className="h-5 w-5 text-blue-700 dark:text-blue-300" />
+            Rios e cheias
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="space-y-3">
           <Skeleton className="h-16" />
           <Skeleton className="h-16" />
         </CardContent>
@@ -78,74 +73,72 @@ export function AnaRios({ lat, lon }: Props) {
   }
 
   return (
-    <Card className="border-blue-500/30 bg-gradient-to-br from-blue-950/40 to-background/60">
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between gap-2">
-          <CardTitle className="flex items-center gap-2 text-blue-200 text-sm">
-            <Waves className="h-4 w-4" />
-            Rios · referência ANA / SNIRH
-          </CardTitle>
-          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={fetchRios}>
-            <RefreshCw className="h-3 w-3" />
+    <Card className="border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-base text-slate-950 dark:text-slate-50">
+              <Waves className="h-5 w-5 text-blue-700 dark:text-blue-300" />
+              Rios e cheias · fontes oficiais
+            </CardTitle>
+            <p className="mt-1 text-sm leading-5 text-slate-600 dark:text-slate-400">
+              SGB/SACE e ANA para níveis, bacias, boletins e eventos hidrológicos.
+            </p>
+          </div>
+          <Button size="icon" variant="ghost" className="h-11 w-11 flex-shrink-0" onClick={fetchSources} aria-label="Atualizar fontes de rios">
+            <RefreshCw className="h-4 w-4" />
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-3 pt-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <Badge variant="outline" className="text-[9px] border-amber-500/40 bg-amber-500/10 text-amber-300">
-            LOCALIZAÇÃO DE REFERÊNCIA
+
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline" className="border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
+            <ShieldCheck className="mr-1 h-3.5 w-3.5" /> FONTES OFICIAIS
           </Badge>
-          <span className="text-[10px] text-muted-foreground">sem nível/tendência ao vivo nesta build</span>
+          <span className="text-xs text-slate-600 dark:text-slate-400">
+            {data?.verifiedAt ? `referências verificadas em ${data.verifiedAt}` : 'referências oficiais'}
+          </span>
         </div>
 
-        {data?.estacoes?.length ? (
-          <div className="space-y-2">
-            {data.estacoes.slice(0, 6).map((estacao) => (
-              <div key={estacao.codigo} className="border border-border/40 rounded-lg p-2.5 bg-secondary/30">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-xs truncate flex items-center gap-1">
-                      <MapPin className="h-2.5 w-2.5 text-muted-foreground flex-shrink-0" />
-                      {estacao.nome}
-                    </div>
-                    <div className="text-[10px] text-muted-foreground font-mono-jet mt-0.5">
-                      Rio {estacao.rio} · {estacao.uf} · {estacao.distancia.toFixed(0)} km
-                    </div>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-5 text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            <p><strong>Sem telemetria inventada.</strong> O Aussy ainda não possui integração autenticada para publicar nível ou tendência do rio dentro do app. Os botões abaixo abrem os sistemas oficiais para a situação atual.</p>
+          </div>
+        </div>
+
+        {data?.sources?.length ? (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {data.sources.map((source) => (
+              <a
+                key={source.id}
+                href={source.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group flex min-h-[92px] items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3.5 text-left transition hover:border-blue-300 hover:bg-blue-50 focus-visible:outline-none dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-800 dark:hover:bg-blue-950/20"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-semibold text-slate-950 dark:text-slate-50">{source.name}</span>
+                    {source.recommended && (
+                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800 dark:bg-blue-950/50 dark:text-blue-300">principal</span>
+                    )}
                   </div>
-                  <Badge variant="outline" className="text-[9px] text-muted-foreground">
-                    {estacao.codigo}
-                  </Badge>
+                  <p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-400">{source.organization}</p>
+                  <p className="mt-1.5 text-sm leading-5 text-slate-700 dark:text-slate-300">{source.description}</p>
                 </div>
-                <div className="mt-2 flex items-center gap-1.5 text-[10px] text-amber-300/90">
-                  <AlertTriangle className="h-3 w-3 flex-shrink-0" />
-                  Nível do rio e tendência não disponíveis sem integração oficial autenticada.
-                </div>
-              </div>
+                <ExternalLink className="mt-0.5 h-4 w-4 flex-shrink-0 text-slate-500 transition group-hover:text-blue-700 dark:text-slate-400 dark:group-hover:text-blue-300" />
+              </a>
             ))}
           </div>
         ) : (
-          <p className="text-xs text-muted-foreground">
-            {data ? 'Nenhuma estação de referência no raio de 500 km.' : 'Referência de estações indisponível.'}
+          <p className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+            Não foi possível carregar a lista de fontes oficiais nesta consulta.
           </p>
         )}
 
-        {data?.aviso && (
-          <p className="text-[10px] text-muted-foreground leading-relaxed border-t border-border/30 pt-2">
-            {data.aviso}
-          </p>
-        )}
-
-        {data?.officialApi && (
-          <a
-            href={data.officialApi}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-[10px] text-blue-300 hover:underline"
-          >
-            <ExternalLink className="h-3 w-3" />
-            HidroWebservice oficial ANA
-          </a>
-        )}
+        {data?.note && <p className="border-t border-slate-200 pt-3 text-xs leading-5 text-slate-600 dark:border-slate-800 dark:text-slate-400">{data.note}</p>}
       </CardContent>
     </Card>
   )
