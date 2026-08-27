@@ -35,6 +35,9 @@ jobs:
       - name: Client surface tests
         run: node scripts/test-client-surface.mjs
 
+      - name: Mobile hardware and navigation contracts
+        run: node scripts/test-mobile-hardware.mjs
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
