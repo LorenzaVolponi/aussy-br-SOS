@@ -21,6 +21,7 @@ const nextConfig = read('next.config.ts')
 const layout = read('src/app/layout.tsx')
 const page = read('src/app/page.tsx')
 const geolocation = read('src/hooks/use-geolocation.ts')
+const network = read('src/hooks/use-network.ts')
 const torch = read('src/components/aussy/device-torch.tsx')
 const locationControl = read('src/components/aussy/location-control.tsx')
 
@@ -47,6 +48,11 @@ assertContains(geolocation, 'enableHighAccuracy: true', 'GPS solicita alta preci
 assertContains(geolocation, "navigator.permissions.query", 'estado da permissão é observado')
 assertContains(geolocation, 'GeolocationPermissionDenied', 'erros GPS são normalizados por código')
 assertContains(geolocation, 'GPS_TARGET_ACCURACY_METERS', 'melhor fix é selecionado por precisão')
+
+assertContains(network, 'const INITIAL_NETWORK_STATE', 'rede possui estado inicial determinístico')
+assertContains(network, 'useState<NetworkState>(INITIAL_NETWORK_STATE)', 'SSR e navegador usam o mesmo primeiro render')
+assertContains(network, /INITIAL_NETWORK_STATE[\s\S]*online:\s*true/, 'estado inicial não depende de APIs do ambiente')
+assertNotContains(network, "online: typeof navigator !== 'undefined' ? navigator.onLine : true", 'initializer não pode ler navigator do Node')
 
 assertContains(page, 'MOBILE_TABS.map', 'todos os módulos móveis são navegáveis diretamente')
 assertContains(page, 'overflow-x-auto', 'barra inferior suporta navegação horizontal')
