@@ -114,7 +114,7 @@ export async function GET(request: Request) {
       source: 'OpenStreetMap contributors via Overpass API', sourceUrl: OSM_URL,
       dataQuality: { towers: 'unavailable', wifiPoints: 'live-crowdsourced' },
       wifiPoints, wifiTotal: wifiPoints.length, towers: [], towersTotal: 0, byOperator,
-      note: 'Pontos de Wi-Fi são registros geográficos atuais consultados no OpenStreetMap. A presença no mapa não garante disponibilidade, gratuidade, alcance ou funcionamento neste instante. ERBs oficiais permanecem indisponíveis até integração verificável com ANATEL.',
+      note: 'Pontos de Wi-Fi são registros geográficos atuais consultados no OpenStreetMap. A presença no mapa não garante disponibilidade, gratuidade, alcance ou funcionamento neste instante. ERBs oficiais não integradas nesta build. O Aussy não fabrica posições de ERB.',
     }, { headers: { 'Cache-Control': 'public, s-maxage=1800, stale-while-revalidate=21600' } })
   } catch {
     return NextResponse.json({
@@ -123,7 +123,7 @@ export async function GET(request: Request) {
       dataQuality: { towers: 'unavailable', wifiPoints: 'unavailable' },
       wifiPoints: [], wifiTotal: 0, towers: [], towersTotal: 0, byOperator,
       error: 'wifi-upstream-unavailable',
-      note: 'A fonte de Wi-Fi não respondeu. O Aussy não substitui a falha por pontos demonstrativos ou inventados.',
+      note: 'A fonte de Wi-Fi não respondeu. O Aussy não substitui a falha por pontos demonstrativos ou inventados. ERBs oficiais não integradas nesta build. O Aussy não fabrica posições de ERB.',
     }, { status: 503 })
   } finally {
     clearTimeout(timeout)
