@@ -1,4 +1,27 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
+
+const MOBILE_DESTINATIONS = [
+  ['home', 'Início'],
+  ['clima', 'Clima e alertas'],
+  ['mapa', 'Mapa e rede'],
+  ['defesa', 'Defesa Civil'],
+  ['natureza', 'Rios e natureza'],
+  ['satellites', 'Satélites'],
+  ['sensores', 'Sensores'],
+  ['tools', 'Ferramentas'],
+] as const
+
+function watchHydrationErrors(page: Page) {
+  const errors: string[] = []
+
+  page.on('pageerror', (error) => {
+    if (/React error #418|hydration failed|hydration mismatch/i.test(error.message)) {
+      errors.push(error.message)
+    }
+  })
+
+  return errors
+}
 
 test.describe('Aussy V1 mobile', () => {
   test.beforeEach(async ({ context }) => {
@@ -6,7 +29,9 @@ test.describe('Aussy V1 mobile', () => {
     await context.setGeolocation({ latitude: -25.4284, longitude: -49.2733 })
   })
 
-  test('home renders the command interface without horizontal overflow', async ({ page }) => {
+  test('home renders without hydration mismatch or horizontal page overflow', async ({ page }) => {
+    const hydrationErrors = watchHydrationErrors(page)
+
     await page.goto('/')
     await expect(page.getByRole('button', { name: /Ir para o início do Aussy/i })).toBeVisible()
     await expect(page.getByText('Ações rápidas', { exact: true })).toBeVisible()
@@ -18,6 +43,11 @@ test.describe('Aussy V1 mobile', () => {
       scrollWidth: document.documentElement.scrollWidth,
     }))
     expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.innerWidth + 1)
+
+    await expect.poll(() => hydrationErrors, {
+      message: 'O primeiro render mobile não pode divergir entre servidor e navegador',
+      timeout: 1_000,
+    }).toEqual([])
   })
 
   test('emergency route does not fabricate zero coordinates', async ({ page }) => {
@@ -41,19 +71,10 @@ test.describe('Aussy V1 mobile', () => {
     const navigation = page.getByRole('navigation', { name: 'Navegação principal' })
     await expect(navigation.getByRole('button', { name: /^SOS$/i })).toBeVisible()
 
-    for (const name of [
-      'Início',
-      'Clima e alertas',
-      'Mapa e rede',
-      'Defesa Civil',
-      'Rios e natureza',
-      'Satélites',
-      'Sensores',
-      'Ferramentas',
-    ]) {
-      const destination = navigation.getByRole('button', { name })
-      await destination.scrollIntoViewIfNeeded()
-      await expect(destination).toBeVisible()
+    for (const [key, label] of MOBILE_DESTINATIONS) {
+      const destination = navigation.locator(`[data-mobile-tab="${key}"]`)
+      await expect(destination).toHaveCount(1)
+      await expect(destination).toHaveAttribute('aria-label', label)
     }
 
     await expect(navigation.getByRole('button', { name: /^Menu$/i })).toHaveCount(0)
@@ -63,10 +84,11 @@ test.describe('Aussy V1 mobile', () => {
     await page.goto('/')
 
     const navigation = page.getByRole('navigation', { name: 'Navegação principal' })
-    const tools = navigation.getByRole('button', { name: 'Ferramentas' })
-    await tools.scrollIntoViewIfNeeded()
+    const tools = navigation.locator('[data-mobile-tab="tools"]')
+    await expect(tools).toBeAttached()
     await tools.click()
 
+    await expect(page).toHaveURL(/\?tab=tools$/)
     await expect(page.getByText('Lanterna LED real', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: /Acender LED traseiro/i })).toBeVisible()
   })
