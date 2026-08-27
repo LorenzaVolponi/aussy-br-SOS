@@ -99,7 +99,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <meta name="msapplication-TileColor" content="#ffffff" />
         <meta name="geo.region" content="BR" />
         <meta name="geo.placename" content="Brasil" />
-        <meta httpEquiv="Permissions-Policy" content="geolocation=(self), microphone=(), camera=(), accelerometer=(self), gyroscope=(self), magnetometer=(self), ambient-light-sensor=(self)" />
+        <meta
+          httpEquiv="Permissions-Policy"
+          content="geolocation=(self), microphone=(), camera=(self), accelerometer=(self), gyroscope=(self), magnetometer=(self), ambient-light-sensor=(self)"
+        />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} ${jetMono.variable} antialiased bg-background text-foreground`}>
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} disableTransitionOnChange>
