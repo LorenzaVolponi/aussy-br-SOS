@@ -49,8 +49,9 @@ requireFragments(layoutPath, layout, [
   'className="light"',
   'defaultTheme="light"',
   'statusBarStyle: "default"',
+  'applicationName: "AUSSY.SOS"',
 ])
-forbidFragments(layoutPath, layout, ['defaultTheme="dark"'])
+forbidFragments(layoutPath, layout, ['defaultTheme="dark"', '"WiFi grátis"'])
 
 const page = await read(pagePath)
 requireFragments(pagePath, page, [
@@ -58,6 +59,10 @@ requireFragments(pagePath, page, [
   'onOpenQr={() => setQrLocOpen(true)}',
   'aria-label="SOS"',
   'Menu rápido AUSSY',
+  'Essencial',
+  'Explorar',
+  'Mapa e rede',
+  'Rios e natureza',
   'Aguardando localização válida',
   "<EmergencySOS observerLat={point?.lat} observerLon={point?.lon} />",
   '<QuickShare initialPoint={point} />',
@@ -73,7 +78,7 @@ forbidFragments(pagePath, page, [
 const commandHome = await read(commandHomePath)
 requireFragments(commandHomePath, commandHome, [
   "const STORAGE_KEY = 'aussy_quick_actions_v2'",
-  "const DEFAULT_QUICK: QuickKey[] = ['emergency', 'alerts', 'weather', 'map', 'contacts', 'satellites']",
+  "const DEFAULT_QUICK: QuickKey[] = ['emergency', 'alerts', 'map', 'contacts']",
   'Ações rápidas',
   'O essencial em até dois toques.',
   'Ver todos os recursos',
@@ -144,4 +149,4 @@ if (failures.length) {
   process.exit(1)
 }
 
-console.log('V1 release surface OK — command home, emergency access, observability, mobile browser matrix, strict lint and trust contracts are protected')
+console.log('V1 release surface OK — simplified command home, emergency access, readable navigation, observability and mobile trust contracts are protected')
