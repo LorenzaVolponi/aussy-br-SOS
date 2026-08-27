@@ -11,7 +11,8 @@ import {
 } from '@/components/ui/sheet'
 import {
   Activity,
-  ChevronRight,
+  Bell,
+  CloudSun,
   Compass,
   Download,
   Leaf,
@@ -20,18 +21,15 @@ import {
   Menu,
   Moon,
   MoreHorizontal,
-  QrCode,
   Satellite,
   Shield,
   Siren,
   Sun,
-  Wifi,
-  WifiOff,
   Wrench,
-  Zap,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { EmergencySOS } from '@/components/aussy/emergency-sos'
+import { HomeCommandDashboard } from '@/components/aussy/home-command-dashboard'
 import { InmetAlerts } from '@/components/aussy/inmet-alerts'
 import { NetworkMonitor } from '@/components/aussy/network-monitor'
 import { NoSignalWizard } from '@/components/aussy/no-signal-wizard'
@@ -81,27 +79,23 @@ interface TabDef {
   key: TabKey
   label: string
   short: string
+  description: string
   icon: typeof Activity
-  color: string
-  primary: boolean
 }
 
-const GOLD = '#D9A76A'
-
 const TABS: TabDef[] = [
-  { key: 'home', label: 'Início', short: 'Início', icon: Activity, color: 'text-[#D9A76A]', primary: true },
-  { key: 'emergency', label: 'Emergência', short: 'SOS', icon: Siren, color: 'text-red-500', primary: true },
-  { key: 'mapa', label: 'Mapa', short: 'Mapa', icon: MapIcon, color: 'text-[#D9A76A]', primary: true },
-  { key: 'clima', label: 'Clima e alertas', short: 'Alertas', icon: Shield, color: 'text-[#D9A76A]', primary: true },
-  { key: 'natureza', label: 'Natureza', short: 'Natureza', icon: Leaf, color: 'text-[#D9A76A]', primary: false },
-  { key: 'satellites', label: 'Satélites', short: 'Satélites', icon: Satellite, color: 'text-[#D9A76A]', primary: false },
-  { key: 'sensores', label: 'Sensores', short: 'Sensores', icon: Compass, color: 'text-[#D9A76A]', primary: false },
-  { key: 'defesa', label: 'Defesa Civil', short: 'Defesa', icon: Shield, color: 'text-[#D9A76A]', primary: false },
-  { key: 'tools', label: 'Ferramentas', short: 'Tools', icon: Wrench, color: 'text-[#D9A76A]', primary: false },
+  { key: 'home', label: 'Início', short: 'Início', description: 'Painel rápido do Aussy', icon: Activity },
+  { key: 'emergency', label: 'Emergência', short: 'SOS', description: 'SOS, contatos, QR médico e trilha', icon: Siren },
+  { key: 'mapa', label: 'Mapa', short: 'Mapa', description: 'Mapas preparados para uso online e offline', icon: MapIcon },
+  { key: 'clima', label: 'Clima e alertas', short: 'Alertas', description: 'Previsão, INMET, CEMADEN e sismos', icon: CloudSun },
+  { key: 'natureza', label: 'Natureza', short: 'Natureza', description: 'Rios, eventos naturais e fauna', icon: Leaf },
+  { key: 'satellites', label: 'Satélites', short: 'Satélites', description: 'Passagens orbitais e fontes de satélite', icon: Satellite },
+  { key: 'sensores', label: 'Sensores', short: 'Sensores', description: 'Bússola, altímetro e trilha GPS', icon: Compass },
+  { key: 'defesa', label: 'Defesa Civil', short: 'Defesa', description: 'Protocolos e contatos oficiais', icon: Shield },
+  { key: 'tools', label: 'Ferramentas', short: 'Tools', description: 'Recursos de sobrevivência e idiomas', icon: Wrench },
 ]
 
-const PRIMARY_TABS = TABS.filter((tab) => tab.primary)
-const MORE_TABS = TABS.filter((tab) => !tab.primary)
+const SECONDARY_TABS: TabKey[] = ['natureza', 'satellites', 'sensores', 'defesa', 'tools']
 
 export default function Home() {
   const [tab, setTab] = useState<TabKey>('home')
@@ -227,12 +221,12 @@ export default function Home() {
   }
 
   const LocationPending = () => (
-    <div className="rounded-xl border border-[#D9A76A]/25 bg-[#D9A76A]/5 p-4 text-sm">
+    <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
       <div className="flex items-start gap-3">
-        <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#D9A76A]" />
+        <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-700 dark:text-blue-300" />
         <div>
           <div className="font-semibold">Aguardando localização válida</div>
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+          <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
             O Aussy não assume uma cidade padrão. Autorize o GPS ou reutilize uma posição salva para liberar os módulos dependentes de localização.
           </p>
         </div>
@@ -240,133 +234,31 @@ export default function Home() {
     </div>
   )
 
-  const HomeHero = () => {
-    const locationTitle = cityName || point?.city || locationPresentation.title
-    const locationMeta = point
-      ? `${point.lat.toFixed(4)}°, ${point.lon.toFixed(4)}° · ${locationPresentation.source}`
-      : locationPresentation.source
-
-    const exploreItems: Array<{ label: string; icon: typeof Activity; action: () => void }> = [
-      { label: 'Mapa', icon: MapIcon, action: () => handleTabClick('mapa') },
-      { label: 'Alertas', icon: Shield, action: () => handleTabClick('clima') },
-      { label: 'Defesa Civil', icon: Shield, action: () => handleTabClick('defesa') },
-      { label: 'Sensores', icon: Compass, action: () => handleTabClick('sensores') },
-      { label: 'Satélites', icon: Satellite, action: () => handleTabClick('satellites') },
-      { label: 'Natureza', icon: Leaf, action: () => handleTabClick('natureza') },
-      { label: 'Ferramentas', icon: Wrench, action: () => handleTabClick('tools') },
-      { label: 'Mais', icon: MoreHorizontal, action: () => setMoreOpen(true) },
-    ]
-
-    return (
-      <section className="relative isolate overflow-hidden rounded-2xl border border-border/55 bg-card/20 px-4 py-7 sm:px-7 sm:py-9 lg:px-10 lg:py-12">
-        <div className="pointer-events-none absolute -right-28 top-10 h-[420px] w-[420px] rounded-full border border-[#D9A76A]/[0.055]" />
-        <div className="pointer-events-none absolute -right-12 top-28 h-[300px] w-[300px] rounded-full border border-[#D9A76A]/[0.045]" />
-        <div className="pointer-events-none absolute right-10 top-36 select-none text-[250px] font-black leading-none text-[#D9A76A]/[0.025]">A</div>
-
-        <div className="relative mx-auto max-w-6xl">
-          <div className="max-w-3xl">
-            <p className="font-mono-jet text-[10px] uppercase tracking-[0.32em] text-[#D9A76A]">AUSSY · SISTEMA DE SEGURANÇA</p>
-            <h1 className="mt-7 text-[clamp(2.6rem,9vw,6.6rem)] font-semibold leading-[0.92] tracking-[-0.055em]">
-              AUSSY
-              <span className="mt-1 block font-light">ESTÁ COM VOCÊ<span className="text-[#D9A76A]">.</span></span>
-            </h1>
-            <p className="mt-6 max-w-xl text-sm leading-7 text-muted-foreground sm:text-base">
-              Tecnologia e informação em tempo real para proteger o que mais importa.
-            </p>
-          </div>
-
-          <div className="mt-9 grid items-stretch gap-3 md:grid-cols-[180px_1fr]">
-            <button
-              onClick={() => handleTabClick('emergency')}
-              className="group flex min-h-36 items-center justify-center rounded-xl border border-[#D9A76A]/55 bg-black/[0.08] p-5 transition hover:border-[#D9A76A] dark:bg-black/25"
-              aria-label="Abrir emergência SOS"
-            >
-              <span className="flex h-28 w-28 items-center justify-center rounded-full border border-[#D9A76A]/70 text-3xl font-light tracking-[0.16em] text-[#D9A76A] transition group-hover:scale-[1.03]">SOS</span>
-            </button>
-            <button
-              onClick={() => handleTabClick('emergency')}
-              className="group flex min-h-36 items-center justify-between rounded-xl border border-border/70 bg-background/35 px-6 py-5 text-left transition hover:border-[#D9A76A]/55 sm:px-8"
-            >
-              <div>
-                <div className="text-sm font-medium uppercase tracking-[0.16em] sm:text-base">Toque para emergência</div>
-                <p className="mt-2 max-w-md text-xs leading-5 text-muted-foreground sm:text-sm">Acesse chamadas oficiais, alarme local e protocolos de emergência.</p>
-              </div>
-              <ChevronRight className="ml-4 h-5 w-5 flex-shrink-0 text-[#D9A76A] transition group-hover:translate-x-1" />
-            </button>
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 overflow-hidden rounded-xl border border-border/70 bg-background/35 sm:grid-cols-4">
-            <button onClick={() => handleTabClick('clima')} className="min-h-28 border-b border-r border-border/60 p-4 text-left transition hover:bg-[#D9A76A]/5 sm:border-b-0">
-              <Shield className="h-5 w-5 text-[#D9A76A]" />
-              <div className="mt-3 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Alertas</div>
-              <div className="mt-1 text-sm font-semibold">Oficiais</div>
-              <div className="mt-1 text-[10px] text-muted-foreground">Abrir monitoramento</div>
-            </button>
-            <button onClick={() => handleTabClick('clima')} className="min-h-28 border-b border-border/60 p-4 text-left transition hover:bg-[#D9A76A]/5 sm:border-b-0 sm:border-r">
-              <Sun className="h-5 w-5 text-foreground" />
-              <div className="mt-3 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Clima</div>
-              <div className="mt-1 text-sm font-semibold">Consultar</div>
-              <div className="mt-1 text-[10px] text-muted-foreground">Dados pela localização</div>
-            </button>
-            <div className="min-h-28 border-r border-border/60 p-4">
-              {network.online ? <Wifi className="h-5 w-5 text-foreground" /> : <WifiOff className="h-5 w-5 text-red-500" />}
-              <div className="mt-3 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Rede</div>
-              <div className="mt-1 text-sm font-semibold">{network.online ? 'Conectada' : 'Offline'}</div>
-              <div className="mt-1 text-[10px] text-muted-foreground">Estado real do dispositivo</div>
-            </div>
-            <button onClick={() => detect()} disabled={geoLoading} className="min-h-28 p-4 text-left transition hover:bg-[#D9A76A]/5">
-              <MapPin className={`h-5 w-5 ${point ? 'text-[#D9A76A]' : 'text-muted-foreground'} ${geoLoading ? 'animate-pulse' : ''}`} />
-              <div className="mt-3 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Localização</div>
-              <div className="mt-1 text-sm font-semibold">{locationPresentation.status}</div>
-              <div className="mt-1 text-[10px] leading-4 text-muted-foreground">{geoLoading ? 'Atualizando posição' : point ? locationPresentation.source : 'Toque para atualizar'}</div>
-            </button>
-          </div>
-
-          <div className="relative mt-4 overflow-hidden rounded-xl border border-border/70 bg-background/35 p-5 sm:p-7">
-            <div className="pointer-events-none absolute inset-y-0 right-0 w-[52%] opacity-40 [background-image:linear-gradient(35deg,transparent_46%,rgba(217,167,106,.12)_47%,transparent_48%),linear-gradient(145deg,transparent_46%,rgba(255,255,255,.08)_47%,transparent_48%)] [background-size:38px_38px]" />
-            <div className="relative grid gap-7 sm:grid-cols-[1fr_.85fr] sm:items-center">
-              <div>
-                <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-[#D9A76A]">Onde estou</p>
-                <h2 className="mt-3 text-2xl font-medium tracking-tight">{locationTitle}</h2>
-                <p className="mt-2 font-mono-jet text-[11px] text-muted-foreground">{locationMeta}</p>
-                <div className="mt-5 flex flex-wrap gap-2">
-                  <button onClick={() => handleTabClick('mapa')} className="inline-flex items-center gap-2 rounded-lg border border-[#D9A76A]/35 px-4 py-2 text-xs font-medium uppercase tracking-[0.12em] transition hover:bg-[#D9A76A]/8">Ver no mapa <ChevronRight className="h-3.5 w-3.5 text-[#D9A76A]" /></button>
-                  <button onClick={() => setQrLocOpen(true)} className="inline-flex items-center gap-2 rounded-lg border border-border/65 px-4 py-2 text-xs text-muted-foreground transition hover:border-[#D9A76A]/35 hover:text-foreground"><QrCode className="h-3.5 w-3.5" /> QR localização</button>
-                </div>
-              </div>
-              <button onClick={() => handleTabClick('mapa')} className="relative mx-auto flex h-36 w-full max-w-xs items-center justify-center rounded-xl border border-border/55 bg-card/20" aria-label="Abrir mapa">
-                <span className="absolute h-24 w-24 rounded-full border border-[#D9A76A]/25" />
-                <span className="absolute h-16 w-16 rounded-full border border-[#D9A76A]/40" />
-                <span className="h-4 w-4 rounded-full border-4 border-background bg-[#D9A76A] shadow-sm" />
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-5">
-            <p className="mb-3 text-[10px] font-medium uppercase tracking-[0.2em] text-[#D9A76A]">Explorar</p>
-            <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-border/70 bg-background/30 sm:grid-cols-4">
-              {exploreItems.map((item, index) => {
-                const Icon = item.icon
-                return (
-                  <button
-                    key={item.label}
-                    onClick={item.action}
-                    className={`flex min-h-24 items-center gap-3 border-border/55 p-4 text-left transition hover:bg-[#D9A76A]/5 ${index % 2 === 0 ? 'border-r' : ''} ${index < 6 ? 'border-b' : ''} sm:border-r sm:[&:nth-child(4n)]:border-r-0 sm:[&:nth-child(n+5)]:border-b-0`}
-                  >
-                    <Icon className="h-5 w-5 flex-shrink-0 text-[#D9A76A]" />
-                    <span className="text-sm font-medium">{item.label}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-      </section>
-    )
-  }
-
   const tabContent: Record<TabKey, React.ReactNode> = {
-    home: <div className="space-y-5"><HomeHero /><div className="grid gap-4 xl:grid-cols-2"><NoSignalWizard /><OfflineManager /></div><NetworkMonitor /></div>,
+    home: (
+      <div className="space-y-6">
+        <HomeCommandDashboard
+          point={point}
+          cityName={cityName}
+          networkOnline={network.online}
+          geoLoading={geoLoading}
+          locationStatus={locationPresentation.status}
+          locationSource={locationPresentation.source}
+          onNavigate={handleTabClick}
+          onOpenMore={() => setMoreOpen(true)}
+          onOpenQr={() => setQrLocOpen(true)}
+          onRefreshLocation={() => void detect()}
+        />
+        <section className="mx-auto max-w-5xl space-y-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Resiliência offline</p>
+            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">Os recursos abaixo continuam disponíveis sem esconder as limitações de rede.</p>
+          </div>
+          <div className="grid gap-4 xl:grid-cols-2"><NoSignalWizard /><OfflineManager /></div>
+          <NetworkMonitor />
+        </section>
+      </div>
+    ),
     emergency: <div className="space-y-4"><EmergencySOS observerLat={point?.lat} observerLon={point?.lon} />{!point && <LocationPending />}<ShakeToSOS /><LazyMedicalCardQR /><LazyEmergencyContacts /><LazyGpsTrail /><LazyMultilingualPhrases /></div>,
     clima: <div className="space-y-4">{point ? <><LazyWeatherForecast lat={point.lat} lon={point.lon} /><LazyInmetStations lat={point.lat} lon={point.lon} /><LazyEarthquakesCard lat={point.lat} lon={point.lon} /></> : <LocationPending />}<LazyCptecSatellite /><InmetAlerts /><LazyCemadenAlerts /></div>,
     mapa: <div className="space-y-4">{point ? <><LazyOfflineMap initialLat={point.lat} initialLon={point.lon} /><LazyCoverageMap observerLat={point.lat} observerLon={point.lon} /></> : <LocationPending />}<LazyMeshNetwork /><RegulatoryInfo /></div>,
@@ -377,95 +269,97 @@ export default function Home() {
     tools: <div className="space-y-4"><LazySurvivalTools /><LazyMultilingualPhrases /><RegulatoryInfo /></div>,
   }
 
+  const moreActive = SECONDARY_TABS.includes(tab)
+
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-40 border-b border-border/50 bg-background/90 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
-          <button onClick={() => handleTabClick('home')} className="flex min-w-0 items-center gap-3 text-left">
-            <img src="/icon-192.svg" alt="Aussy Ontech" className="h-9 w-9 flex-shrink-0" />
-            <div className="min-w-0">
-              <div className="truncate text-sm font-semibold tracking-[0.38em]">AUSSY</div>
-              <div className="mt-0.5 truncate text-[8px] uppercase tracking-[0.22em] text-muted-foreground">Sistema de segurança</div>
-            </div>
-          </button>
-
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="hidden items-center gap-3 border-r border-border/60 pr-3 sm:flex">
-              <div>
-                <div className={`flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em] ${network.online ? 'text-emerald-500' : 'text-red-500'}`}>
-                  <span className={`h-1.5 w-1.5 rounded-full ${network.online ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                  {network.online ? 'Online' : 'Offline'}
-                </div>
-                <div className="mt-0.5 max-w-32 truncate text-xs">{cityName || point?.city || 'Localização'}</div>
-                <button onClick={() => detect()} disabled={geoLoading} className="mt-0.5 flex items-center gap-1 text-[9px] uppercase tracking-[0.14em] text-muted-foreground hover:text-foreground"><MapPin className="h-2.5 w-2.5" /> {locationPresentation.status}</button>
-              </div>
-            </div>
-
-            {installPrompt && <Button onClick={handleInstall} size="sm" variant="ghost" className="hidden h-9 px-2 text-xs md:flex"><Download className="mr-1 h-3.5 w-3.5" /> Instalar</Button>}
-
-            <button onClick={toggleTheme} className="flex h-10 w-10 items-center justify-center rounded-xl border border-border/70 transition hover:border-[#D9A76A]/55" aria-label="Alternar tema claro e escuro">
-              {themeMounted && resolvedTheme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4 text-[#D9A76A]" />}
-            </button>
-            <button onClick={() => setMoreOpen(true)} className="flex h-10 w-10 items-center justify-center rounded-xl border border-transparent transition hover:border-border/70" aria-label="Abrir menu">
+    <div className="min-h-screen bg-[#f6f8fb] text-slate-950 dark:bg-background dark:text-foreground">
+      <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl dark:border-border/50 dark:bg-background/92">
+        <div className="mx-auto grid max-w-6xl grid-cols-[44px_1fr_88px] items-center gap-2 px-3 py-3 sm:grid-cols-[180px_1fr_180px] sm:px-5">
+          <div className="flex items-center gap-2">
+            <button onClick={() => setMoreOpen(true)} className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 transition hover:border-blue-200 hover:text-blue-700 dark:border-border dark:bg-card dark:text-foreground" aria-label="Abrir menu">
               <Menu className="h-5 w-5" />
             </button>
+            <div className="hidden sm:block">
+              <div className={`flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${network.online ? 'text-emerald-600' : 'text-slate-500'}`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${network.online ? 'bg-emerald-500' : 'bg-slate-400'}`} /> {network.online ? 'Sistema online' : 'Modo offline'}
+              </div>
+              <div className="mt-0.5 max-w-32 truncate text-[10px] text-slate-400">{cityName || point?.city || locationPresentation.status}</div>
+            </div>
           </div>
-        </div>
 
-        <div className="border-t border-border/35 px-4 py-1.5 sm:hidden">
-          <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 text-[9px] uppercase tracking-[0.12em] text-muted-foreground">
-            <span className={network.online ? 'text-emerald-500' : 'text-red-500'}>● {network.online ? 'Online' : 'Offline'}</span>
-            <span className="truncate">{cityName || point?.city || locationPresentation.status}</span>
-            <button onClick={() => detect()} disabled={geoLoading} className="flex items-center gap-1"><Zap className={`h-3 w-3 ${geoLoading ? 'animate-pulse' : ''}`} /> Atualizar</button>
+          <button onClick={() => handleTabClick('home')} className="justify-self-center text-center" aria-label="Ir para o início do Aussy">
+            <div className="text-[22px] font-black tracking-[0.16em] text-[#10275a] dark:text-white">AUSSY<span className="ml-0.5 text-[11px] tracking-normal text-red-600">.SOS</span></div>
+            <div className="mt-0.5 hidden text-[8px] font-semibold uppercase tracking-[0.18em] text-slate-400 sm:block">Segurança inteligente</div>
+          </button>
+
+          <div className="flex items-center justify-end gap-1.5">
+            <button onClick={() => handleTabClick('clima')} className="relative flex h-10 w-10 items-center justify-center rounded-xl text-slate-600 transition hover:bg-slate-100 dark:text-muted-foreground dark:hover:bg-secondary" aria-label="Abrir alertas">
+              <Bell className="h-4.5 w-4.5" />
+              {network.online && <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-red-500" />}
+            </button>
+            <button onClick={toggleTheme} className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-600 transition hover:bg-slate-100 dark:text-muted-foreground dark:hover:bg-secondary" aria-label="Alternar tema claro e escuro">
+              {themeMounted && resolvedTheme === 'dark' ? <Sun className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
+            </button>
           </div>
         </div>
       </header>
 
       <main className="mx-auto w-full max-w-7xl px-3 py-4 pb-28 sm:px-5 sm:py-6 lg:px-7 lg:pb-8">{tabContent[tab]}</main>
 
-      <footer className="border-t border-border/40 px-4 py-5 text-center text-xs text-muted-foreground">
-        <p className="font-medium text-foreground">AIX8C - Uma tecnologia do grupo volponi.tech ! <strong>@𝗟𝗼𝗿𝗲𝗻𝘇𝗮 𝗩𝗼𝗹𝗽𝗼𝗻𝗶 🚀</strong> #01 em tecnologia no Brasil</p>
-        <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground/75">Aussy Ontech combina recursos locais, fontes externas e cache de última resposta válida. Não substitui serviços oficiais de emergência.</p>
+      <footer className="border-t border-slate-200 bg-white px-4 py-5 text-center text-xs text-slate-500 dark:border-border/40 dark:bg-background dark:text-muted-foreground">
+        <p className="font-medium text-slate-800 dark:text-foreground">AIX8C - Uma tecnologia do grupo volponi.tech ! <strong>@𝗟𝗼𝗿𝗲𝗻𝘇𝗮 𝗩𝗼𝗹𝗽𝗼𝗻𝗶 🚀</strong> #01 em tecnologia no Brasil</p>
+        <p className="mt-2 text-[10px] leading-relaxed opacity-75">Aussy Ontech combina recursos locais, fontes externas e cache de última resposta válida. Não substitui serviços oficiais de emergência.</p>
       </footer>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border/50 bg-background/95 backdrop-blur-xl lg:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-        <div className="mx-auto grid max-w-lg grid-cols-5 px-1">
-          {PRIMARY_TABS.map((item) => {
-            const Icon = item.icon
-            const active = tab === item.key
-            return (
-              <button key={item.key} onClick={() => handleTabClick(item.key)} className={`relative flex min-h-[58px] flex-col items-center justify-center gap-1 px-1 py-1.5 text-[9px] uppercase tracking-[0.08em] transition ${active ? 'text-foreground' : 'text-muted-foreground'}`}>
-                {active && <span className={`absolute left-1/2 top-0 h-px w-10 -translate-x-1/2 ${item.key === 'emergency' ? 'bg-red-500' : 'bg-[#D9A76A]'}`} />}
-                <Icon className={`h-5 w-5 ${active ? item.color : ''}`} />
-                <span>{item.short}</span>
-              </button>
-            )
-          })}
-          <button onClick={() => setMoreOpen(true)} className={`relative flex min-h-[58px] flex-col items-center justify-center gap-1 px-1 py-1.5 text-[9px] uppercase tracking-[0.08em] ${MORE_TABS.some((item) => item.key === tab) ? 'text-foreground' : 'text-muted-foreground'}`}>
-            {MORE_TABS.some((item) => item.key === tab) && <span className="absolute left-1/2 top-0 h-px w-10 -translate-x-1/2 bg-[#D9A76A]" />}
-            <MoreHorizontal className="h-5 w-5" />
-            <span>Mais</span>
+      <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/96 shadow-[0_-8px_30px_rgba(15,23,42,0.06)] backdrop-blur-xl dark:border-border/50 dark:bg-background/96 lg:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        <div className="mx-auto grid max-w-lg grid-cols-5 items-end px-1">
+          <button onClick={() => handleTabClick('home')} className={`relative flex min-h-[64px] flex-col items-center justify-center gap-1 px-1 py-2 text-[9px] font-medium ${tab === 'home' ? 'text-red-600' : 'text-slate-500 dark:text-muted-foreground'}`} aria-label="Início">
+            <Activity className="h-5 w-5" /><span>Início</span>
+          </button>
+          <button onClick={() => handleTabClick('mapa')} className={`relative flex min-h-[64px] flex-col items-center justify-center gap-1 px-1 py-2 text-[9px] font-medium ${tab === 'mapa' ? 'text-[#10275a] dark:text-white' : 'text-slate-500 dark:text-muted-foreground'}`} aria-label="Mapa">
+            <MapIcon className="h-5 w-5" /><span>Mapa</span>
+          </button>
+          <button onClick={() => handleTabClick('emergency')} className="relative -mt-5 flex min-h-[78px] flex-col items-center justify-end gap-1 pb-2 text-[9px] font-semibold text-red-600" aria-label="SOS">
+            <span className="flex h-14 w-14 items-center justify-center rounded-full border-4 border-white bg-red-600 text-base font-bold text-white shadow-[0_8px_25px_rgba(220,38,38,0.35)] dark:border-background">SOS</span>
+            <span>Emergência</span>
+          </button>
+          <button onClick={() => handleTabClick('clima')} className={`relative flex min-h-[64px] flex-col items-center justify-center gap-1 px-1 py-2 text-[9px] font-medium ${tab === 'clima' ? 'text-[#10275a] dark:text-white' : 'text-slate-500 dark:text-muted-foreground'}`} aria-label="Alertas">
+            <Bell className="h-5 w-5" /><span>Alertas</span>
+          </button>
+          <button onClick={() => setMoreOpen(true)} className={`relative flex min-h-[64px] flex-col items-center justify-center gap-1 px-1 py-2 text-[9px] font-medium ${moreActive ? 'text-[#10275a] dark:text-white' : 'text-slate-500 dark:text-muted-foreground'}`} aria-label="Mais">
+            <MoreHorizontal className="h-5 w-5" /><span>Mais</span>
           </button>
         </div>
       </nav>
 
       <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
-        <SheetContent side="bottom" className="max-h-[82vh] overflow-y-auto">
+        <SheetContent side="bottom" className="max-h-[88vh] overflow-y-auto bg-white dark:bg-background">
           <SheetHeader>
-            <SheetTitle className="flex items-center gap-2"><Menu className="h-4 w-4 text-[#D9A76A]" />Navegação Aussy</SheetTitle>
-            <SheetDescription>Acesse todos os módulos sem perder o contexto atual.</SheetDescription>
+            <SheetTitle className="flex items-center gap-2 text-[#10275a] dark:text-foreground"><Menu className="h-4 w-4" />Menu rápido AUSSY</SheetTitle>
+            <SheetDescription>Tudo que importa em até dois toques, sem esconder os módulos avançados.</SheetDescription>
           </SheetHeader>
-          <div className="mt-5 grid grid-cols-2 gap-2 pb-6 sm:grid-cols-3">
+
+          <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
             {TABS.map((item) => {
               const Icon = item.icon
               const active = tab === item.key
               return (
-                <button key={item.key} onClick={() => handleTabClick(item.key)} className={`rounded-xl border p-4 text-left transition ${active ? 'border-[#D9A76A]/50 bg-[#D9A76A]/7' : 'border-border/60 bg-secondary/20 hover:border-[#D9A76A]/30'}`}>
-                  <Icon className={`h-5 w-5 ${item.key === 'emergency' ? 'text-red-500' : 'text-[#D9A76A]'}`} />
-                  <div className="mt-3 text-sm font-semibold">{item.label}</div>
+                <button key={item.key} onClick={() => handleTabClick(item.key)} className={`flex items-center gap-3 rounded-2xl border p-4 text-left transition ${active ? 'border-blue-300 bg-blue-50 dark:border-blue-700 dark:bg-blue-950/30' : 'border-slate-200 bg-white hover:border-blue-200 dark:border-border dark:bg-card'}`}>
+                  <span className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${item.key === 'emergency' ? 'bg-red-600 text-white' : 'bg-slate-100 text-[#10275a] dark:bg-secondary dark:text-foreground'}`}>
+                    <Icon className="h-4.5 w-4.5" />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold">{item.label}</div>
+                    <div className="mt-0.5 text-[10px] leading-4 text-muted-foreground">{item.description}</div>
+                  </div>
                 </button>
               )
             })}
+          </div>
+
+          <div className="mt-5 grid gap-2 border-t border-slate-100 pt-4 dark:border-border sm:grid-cols-2">
+            {installPrompt && <Button onClick={handleInstall} variant="outline" className="justify-start"><Download className="mr-2 h-4 w-4" />Instalar Aussy neste dispositivo</Button>}
+            <Button onClick={toggleTheme} variant="outline" className="justify-start">{resolvedTheme === 'dark' ? <Sun className="mr-2 h-4 w-4" /> : <Moon className="mr-2 h-4 w-4" />}Alternar tema</Button>
           </div>
         </SheetContent>
       </Sheet>
