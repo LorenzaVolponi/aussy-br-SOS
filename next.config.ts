@@ -38,7 +38,9 @@ const nextConfig: NextConfig = {
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           {
             key: 'Permissions-Policy',
-            value: 'geolocation=(self), microphone=(), camera=(), accelerometer=(self), gyroscope=(self), magnetometer=(self), ambient-light-sensor=(self), payment=()',
+            // Câmera liberada apenas para o próprio app: necessária ao LED traseiro local.
+            // Microfone, pagamentos e origens externas continuam bloqueados.
+            value: 'geolocation=(self), microphone=(), camera=(self), accelerometer=(self), gyroscope=(self), magnetometer=(self), ambient-light-sensor=(self), payment=()',
           },
           { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
           { key: 'Cross-Origin-Embedder-Policy', value: 'credentialless' },
