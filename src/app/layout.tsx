@@ -46,7 +46,7 @@ export const metadata: Metadata = {
   authors: [{ name: "Aussy Ontech" }],
   manifest: "/manifest.json",
   applicationName: "Aussy Ontech",
-  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Aussy Ontech" },
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "Aussy Ontech" },
   icons: {
     icon: [
       { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
@@ -78,32 +78,32 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f6f8fb" },
     { media: "(prefers-color-scheme: dark)", color: "#090b0d" },
-    { media: "(prefers-color-scheme: light)", color: "#f7f6f2" },
   ],
   width: "device-width",
   initialScale: 1,
   maximumScale: 5,
   userScalable: true,
   viewportFit: "cover",
-  colorScheme: "dark light",
+  colorScheme: "light dark",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="pt-BR" suppressHydrationWarning className="dark">
+    <html lang="pt-BR" suppressHydrationWarning className="light">
       <head>
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Aussy Ontech" />
         <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="msapplication-TileColor" content="#090b0d" />
+        <meta name="msapplication-TileColor" content="#f6f8fb" />
         <meta name="geo.region" content="BR" />
         <meta name="geo.placename" content="Brasil" />
         <meta httpEquiv="Permissions-Policy" content="geolocation=(self), microphone=(), camera=(), accelerometer=(self), gyroscope=(self), magnetometer=(self), ambient-light-sensor=(self)" />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} ${jetMono.variable} antialiased bg-background text-foreground`}>
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} disableTransitionOnChange>
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} disableTransitionOnChange>
           {children}
           <ClientObservability />
           <OfflineChunkWarmer />
