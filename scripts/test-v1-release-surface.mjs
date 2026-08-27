@@ -21,6 +21,8 @@ function forbidFragments(path, content, fragments) {
 
 const packagePath = 'package.json'
 const pagePath = 'src/app/page.tsx'
+const commandHomePath = 'src/components/aussy/home-command-dashboard.tsx'
+const layoutPath = 'src/app/layout.tsx'
 const quickSharePath = 'src/components/aussy/quick-share.tsx'
 const qrPath = 'src/components/aussy/qr-location.tsx'
 const geoPath = 'src/hooks/use-geolocation.ts'
@@ -42,13 +44,20 @@ requireFragments(packagePath, packageJson, [
   '"build": "next build --webpack"',
 ])
 
+const layout = await read(layoutPath)
+requireFragments(layoutPath, layout, [
+  'className="light"',
+  'defaultTheme="light"',
+  'statusBarStyle: "default"',
+])
+forbidFragments(layoutPath, layout, ['defaultTheme="dark"'])
+
 const page = await read(pagePath)
 requireFragments(pagePath, page, [
-  'AUSSY · SISTEMA DE SEGURANÇA',
-  'ESTÁ COM VOCÊ',
-  'Toque para emergência',
-  'aria-label="Abrir emergência SOS"',
-  'QR localização',
+  '<HomeCommandDashboard',
+  'onOpenQr={() => setQrLocOpen(true)}',
+  'aria-label="SOS"',
+  'Menu rápido AUSSY',
   'Aguardando localização válida',
   "<EmergencySOS observerLat={point?.lat} observerLon={point?.lon} />",
   '<QuickShare initialPoint={point} />',
@@ -59,6 +68,29 @@ requireFragments(pagePath, page, [
 forbidFragments(pagePath, page, [
   'point?.lat ?? 0', 'point?.lon ?? 0', "point?.lat ?? -15.7801", "point?.lon ?? -47.9292",
   '98.7%', '4.897', '+2.4M', '100% offline',
+])
+
+const commandHome = await read(commandHomePath)
+requireFragments(commandHomePath, commandHome, [
+  "const STORAGE_KEY = 'aussy_quick_actions_v2'",
+  "const DEFAULT_QUICK: QuickKey[] = ['emergency', 'alerts', 'weather', 'map', 'contacts', 'satellites']",
+  'Ações rápidas',
+  'O essencial em até dois toques.',
+  'Ver todos os recursos',
+  'Compartilhar localização',
+  "fetch('/api/inmet/alerts'",
+  '/api/cptec/forecast?lat=',
+  "response.headers.get('X-Aussy-Cached')",
+  'INMET indisponível nesta consulta',
+  'Sem cidade padrão, sem coordenada inventada e com cache identificado.',
+])
+forbidFragments(commandHomePath, commandHome, [
+  'São Paulo, SP',
+  '2 ALERTAS ATIVOS',
+  '100% online',
+  '24°',
+  '-15.7801',
+  '-47.9292',
 ])
 
 const quickShare = await read(quickSharePath)
@@ -112,4 +144,4 @@ if (failures.length) {
   process.exit(1)
 }
 
-console.log('V1 release surface OK — safety, observability, mobile browser matrix, strict critical lint and trust contracts are protected')
+console.log('V1 release surface OK — command home, emergency access, observability, mobile browser matrix, strict lint and trust contracts are protected')
