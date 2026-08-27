@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, JetBrains_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import "./volponi-theme.css";
 import { Toaster } from "@/components/ui/toaster";
@@ -108,6 +109,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <Toaster />
           <SonnerToaster position="top-center" />
         </ThemeProvider>
+        <Analytics />
         <script
           dangerouslySetInnerHTML={{
             __html: `
