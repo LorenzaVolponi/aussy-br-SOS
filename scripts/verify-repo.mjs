@@ -75,15 +75,10 @@ for (const command of [
   'node scripts/test-osm-policy.mjs',
 ]) {
   const index = quality.indexOf(command)
-  if (index < 0 || installIndex < 0 || index > installIndex) {
-    failures.push(`quality workflow must run ${command} before dependency installation`)
-  }
+  if (index < 0 || installIndex < 0 || index > installIndex) failures.push(`quality workflow must run ${command} before dependency installation`)
 }
 
-const vercel = requireFragments('vercel.json', [
-  '"installCommand": "bun install --frozen-lockfile"',
-  '"buildCommand": "bun run build"',
-])
+const vercel = requireFragments('vercel.json', ['"installCommand": "bun install --frozen-lockfile"', '"buildCommand": "bun run build"'])
 forbid('vercel.json', vercel, ['"installCommand": "bun install"'])
 
 for (const path of [
@@ -135,11 +130,7 @@ forbid('public/sw.js', sw, [
   '/api/cptec/forecast?lat=-15.7801',
   "'User-Agent'",
 ])
-try {
-  new Function(sw)
-} catch (error) {
-  failures.push(`public/sw.js syntax error: ${error instanceof Error ? error.message : String(error)}`)
-}
+try { new Function(sw) } catch (error) { failures.push(`public/sw.js syntax error: ${error instanceof Error ? error.message : String(error)}`) }
 
 const swRuntime = requireFragments('scripts/test-sw-runtime.mjs', [
   "caches.open('aussy-v9-static')",
@@ -161,77 +152,80 @@ const cemaden = requireFragments('src/app/api/cemaden/alerts/route.ts', [
   'previsao-de-riscos',
   'georisk.cemaden.gov.br',
 ])
-forbid('src/app/api/cemaden/alerts/route.ts', cemaden, [
-  'cemaden.gov.br/api/v1/monitoramento/alertas',
-  'cemaden.gov.br/api/alerta/municipios.json',
-  "dataQuality: 'live'",
-])
+forbid('src/app/api/cemaden/alerts/route.ts', cemaden, ['cemaden.gov.br/api/v1/monitoramento/alertas', 'cemaden.gov.br/api/alerta/municipios.json', "dataQuality: 'live'"])
 if (existsSync(join(root, 'src/proxy.ts'))) failures.push('temporary src/proxy.ts must be removed after final CEMADEN migration')
 
-const cemadenUi = requireFragments('src/components/aussy/cemaden-alerts.tsx', [
-  'PORTAL OFICIAL',
-  'CEMADEN / MCTI — canais oficiais',
-  'cemaden.portals.map',
-  'Aguardando localização válida',
-  'Nenhuma cidade padrão é assumida',
-])
-forbid('src/components/aussy/cemaden-alerts.tsx', cemadenUi, [
-  'Nenhum monitoramento ativo no momento',
-  'alerta(s) CEMADEN ativos',
-  'const lat = point?.lat ?? -15.7801',
-  'const lon = point?.lon ?? -47.9292',
-  'else fetchQueimadas()',
-])
+const cemadenUi = requireFragments('src/components/aussy/cemaden-alerts.tsx', ['PORTAL OFICIAL', 'CEMADEN / MCTI — canais oficiais', 'cemaden.portals.map', 'Aguardando localização válida', 'Nenhuma cidade padrão é assumida'])
+forbid('src/components/aussy/cemaden-alerts.tsx', cemadenUi, ['Nenhum monitoramento ativo no momento', 'alerta(s) CEMADEN ativos', 'const lat = point?.lat ?? -15.7801', 'const lon = point?.lon ?? -47.9292', 'else fetchQueimadas()'])
 
-const satellites = requireFragments('src/lib/data/satellites.ts', [
-  "number: '188', name: 'CVV — Centro de Valorização da Vida'",
-  "verifiedAt: '2026-08-18'",
-  "dataQuality: 'unverified-static'",
-  'operatorsInNegotiation: []',
+const rivers = requireFragments('src/app/api/ana/rios/route.ts', [
+  "dataQuality: 'official-portals-only'",
+  "automationAvailable: false",
+  'https://www.sgb.gov.br/sace/',
+  'monitoramento-hidrologico',
+  'https://www.gov.br/ana/pt-br/sala-de-situacao',
+  "error: 'invalid-location'",
+  'O Aussy não publica nível, vazão, tendência ou alerta de rio como dado ao vivo',
 ])
+forbid('src/app/api/ana/rios/route.ts', rivers, ['ESTACOES_REFERENCIA', 'nivel_atual: 0', '-15.7801', '-47.9292'])
+
+const riversUi = requireFragments('src/components/aussy/ana-rios.tsx', ['Rios e cheias · fontes oficiais', 'SGB/SACE e ANA', 'Sem telemetria inventada', 'data.sources.map'])
+forbid('src/components/aussy/ana-rios.tsx', riversUi, ['Nenhuma estação de referência no raio de 500 km', 'nivel_atual'])
+
+const networkUi = requireFragments('src/components/aussy/network-monitor.tsx', [
+  "useLatencyProbe('/api/health', 10000)",
+  'Rede e conectividade',
+  'Latência aparelho → Aussy',
+  'navegadores não expõem uma lista confiável de SSIDs próximos',
+  'O Aussy não simula redes disponíveis',
+])
+forbid('src/components/aussy/network-monitor.tsx', networkUi, ['IP externo detectado'])
+
+const localChannel = requireFragments('src/components/aussy/mesh-network.tsx', [
+  'Canal local experimental',
+  'isto não é uma rede mesh celular‑para‑celular',
+  'o teste de Bluetooth abaixo apenas abre o seletor de dispositivo',
+])
+forbid('src/components/aussy/mesh-network.tsx', localChannel, ['Cada celular vira um nó da rede', 'retransmitindo mensagens para outros próximos'])
+
+const satellites = requireFragments('src/lib/data/satellites.ts', ["number: '188', name: 'CVV — Centro de Valorização da Vida'", "verifiedAt: '2026-08-18'", "dataQuality: 'unverified-static'", 'operatorsInNegotiation: []'])
 forbid('src/lib/data/satellites.ts', satellites, ["name: 'Linha da Vida'"])
 
-const contacts = requireFragments('src/app/api/emergency/contacts/route.ts', [
-  "dataQuality: 'verified-static'",
-  "verifiedAt: '2026-08-18'",
-  "number: '40199'",
-  'Defesa Civil Alerta',
-])
-forbid('src/app/api/emergency/contacts/route.ts', contacts, [
-  "verifiedAt: '2026-08-17'",
-  'Não disponível oficialmente no Brasil em 17/08/2026',
-])
+const contacts = requireFragments('src/app/api/emergency/contacts/route.ts', ["dataQuality: 'verified-static'", "verifiedAt: '2026-08-18'", "number: '40199'", 'Defesa Civil Alerta'])
+forbid('src/app/api/emergency/contacts/route.ts', contacts, ["verifiedAt: '2026-08-17'", 'Não disponível oficialmente no Brasil em 17/08/2026'])
 
 const readiness = requireFragments('src/lib/readiness-state.ts', [
-  "verifiedAt: '2026-08-25'",
+  "verifiedAt: '2026-08-27'",
   'releaseReady: false',
-  "id: 'functional-audit-pr-pending'",
+  'webReleaseReady: true',
+  'pwaInstalledReleaseReady: false',
+  "id: 'installed-pwa-real-device-acceptance'",
   "id: 'dependency-graph-frozen'",
-  "dependencyLock: 'bun-1.3.14-frozen'",
   "weather: 'met-norway-live-model-or-last-known-good'",
+  "storms: 'inmet-live-alerts-plus-met-norway-model-context'",
+  "rivers: 'sgb-sace-and-ana-official-portals'",
+  "network: 'browser-network-api-plus-aussy-health-probe'",
   "satelliteOrbit: 'celestrak-omm-sgp4-live-or-last-known-good'",
   "cemaden: 'official-portal-only'",
   "serviceWorkerSafetyEpoch: 'aussy-v9'",
 ])
-forbid('src/lib/readiness-state.ts', readiness, [
-  "id: 'dependency-lock-missing'",
-  "id: 'full-build-not-executed'",
-  "id: 'service-worker-safety-epoch-v8'",
-  "id: 'cemaden-undocumented-api-blocked'",
-])
+forbid('src/lib/readiness-state.ts', readiness, ["id: 'functional-audit-pr-pending'", "id: 'dependency-lock-missing'", "id: 'full-build-not-executed'", "id: 'service-worker-safety-epoch-v8'", "id: 'cemaden-undocumented-api-blocked'"])
 
-const layout = requireFragments('src/app/layout.tsx', [
-  'className="light"',
-  'defaultTheme="light"',
-  'statusBarStyle: "default"',
-])
-forbid('src/app/layout.tsx', layout, ['defaultTheme="dark"'])
+const layout = requireFragments('src/app/layout.tsx', ['className="light"', 'defaultTheme="light"', 'statusBarStyle: "default"', 'applicationName: "AUSSY.SOS"'])
+forbid('src/app/layout.tsx', layout, ['defaultTheme="dark"', '"WiFi grátis"'])
+
+const manifest = requireFragments('public/manifest.json', ['"name": "AUSSY.SOS — Segurança e Resiliência"', '"short_name": "AUSSY.SOS"', '"background_color": "#f7f8fa"', 'Tiles realmente visualizados podem permanecer no cache local'])
+forbid('public/manifest.json', manifest, ['"screenshots"', 'download de tiles', 'Operadora de Resiliência Orbital'])
 
 const page = requireFragments('src/app/page.tsx', [
   '<HomeCommandDashboard',
   'onOpenQr={() => setQrLocOpen(true)}',
   'aria-label="SOS"',
   'Menu rápido AUSSY',
+  'Essencial',
+  'Explorar',
+  'Mapa e rede',
+  'Rios e natureza',
   'Aguardando localização válida',
   'O Aussy não assume uma cidade padrão',
   "<EmergencySOS observerLat={point?.lat} observerLon={point?.lon} />",
@@ -241,19 +235,11 @@ const page = requireFragments('src/app/page.tsx', [
   'Não substitui serviços oficiais de emergência',
   'AIX8C - Uma tecnologia do grupo volponi.tech !',
 ])
-forbid('src/app/page.tsx', page, [
-  'const observerLat = point?.lat ?? -15.7801',
-  'const observerLon = point?.lon ?? -47.9292',
-  'point?.lat ?? 0',
-  'point?.lon ?? 0',
-  '100% offline',
-  '98.7%',
-  '4.897',
-  '+2.4M',
-])
+forbid('src/app/page.tsx', page, ['const observerLat = point?.lat ?? -15.7801', 'const observerLon = point?.lon ?? -47.9292', 'point?.lat ?? 0', 'point?.lon ?? 0', '100% offline', '98.7%', '4.897', '+2.4M'])
 
 const commandHome = requireFragments('src/components/aussy/home-command-dashboard.tsx', [
   "const STORAGE_KEY = 'aussy_quick_actions_v2'",
+  "const DEFAULT_QUICK: QuickKey[] = ['emergency', 'alerts', 'map', 'contacts']",
   'Ações rápidas',
   'O essencial em até dois toques.',
   'Ver todos os recursos',
@@ -264,14 +250,10 @@ const commandHome = requireFragments('src/components/aussy/home-command-dashboar
   'INMET indisponível nesta consulta',
   'Sem cidade padrão, sem coordenada inventada e com cache identificado.',
 ])
-forbid('src/components/aussy/home-command-dashboard.tsx', commandHome, [
-  'São Paulo, SP',
-  '2 ALERTAS ATIVOS',
-  '100% online',
-  '24°',
-  'const lat = -15.7801',
-  'const lon = -47.9292',
-])
+forbid('src/components/aussy/home-command-dashboard.tsx', commandHome, ['São Paulo, SP', '2 ALERTAS ATIVOS', '100% online', '24°', 'const lat = -15.7801', 'const lon = -47.9292'])
+
+const globals = requireFragments('src/app/globals.css', ['--background: oklch(0.985', 'html.dark', '.glass-card', 'min-height: 44px', ':focus-visible', '@media (prefers-reduced-motion: reduce)'])
+forbid('src/app/globals.css', globals, ['mantemos dark-only por enquanto'])
 
 const zoneFile = findZoneIdentifier()
 if (zoneFile) failures.push(`Windows metadata present: ${zoneFile}`)
@@ -282,4 +264,4 @@ if (failures.length) {
   process.exit(1)
 }
 
-console.log('Aussy repository invariants OK — frozen dependencies, command home, SW v9, live-data trust boundaries and release gates are aligned')
+console.log('Aussy repository invariants OK — frozen dependencies, simplified release UI, official source boundaries, SW v9 and web-release gates are aligned')
