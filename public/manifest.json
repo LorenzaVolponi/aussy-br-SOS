@@ -1,124 +1,67 @@
 {
-  "name": "Aussy Ontech — Operadora de Resiliência Orbital",
-  "short_name": "Aussy Ontech",
-  "description": "Plataforma offline-first de resiliência: SOS, guias locais, mapas OpenStreetMap preparados para offline, última posição conhecida, alertas e dados ambientais/orbitais com cache e transparência de origem.",
+  "name": "AUSSY.SOS — Segurança e Resiliência",
+  "short_name": "AUSSY.SOS",
+  "description": "SOS, alertas oficiais, localização, mapas, clima e recursos de resiliência com transparência de fonte e cache identificado.",
   "start_url": "/",
   "scope": "/",
+  "id": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui", "browser"],
   "orientation": "any",
-  "background_color": "#0a0e14",
-  "theme_color": "#0a0e14",
-  "categories": ["utilities", "navigation", "news", "weather", "emergency", "travel", "government"],
+  "background_color": "#f7f8fa",
+  "theme_color": "#ffffff",
+  "categories": ["utilities", "navigation", "weather", "emergency", "travel"],
   "lang": "pt-BR",
   "dir": "ltr",
   "prefer_related_applications": false,
   "icons": [
-    {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/icon-192.svg",
-      "sizes": "192x192",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    },
-    {
-      "src": "/icon-512.svg",
-      "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    }
-  ],
-  "screenshots": [
-    {
-      "src": "/icon-512.png",
-      "type": "image/png",
-      "sizes": "512x512",
-      "form_factor": "narrow",
-      "label": "Aussy Ontech — Visão principal"
-    },
-    {
-      "src": "/icon-512.png",
-      "type": "image/png",
-      "sizes": "512x512",
-      "form_factor": "wide",
-      "label": "Aussy Ontech — Modo paisagem"
-    }
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-512.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any" }
   ],
   "shortcuts": [
     {
-      "name": "SOS de Emergência",
+      "name": "SOS e emergência",
       "short_name": "SOS",
       "url": "/?tab=emergency",
-      "description": "Acesso rápido a SOS, números nacionais e guias locais de emergência",
+      "description": "Acesso rápido a SOS, contatos e guias locais de emergência",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     },
     {
-      "name": "Satélites",
-      "short_name": "Satélites",
-      "url": "/?tab=satellites",
-      "description": "Dados orbitais disponíveis online ou da última cópia em cache",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
-    },
-    {
-      "name": "Previsão do tempo",
-      "short_name": "Clima",
+      "name": "Clima e alertas",
+      "short_name": "Alertas",
       "url": "/?tab=clima",
-      "description": "Previsão, estações e alertas quando online ou disponíveis em cache",
+      "description": "Alertas oficiais do INMET, previsão e fontes meteorológicas",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     },
     {
-      "name": "Mapa offline",
+      "name": "Mapa e rede",
       "short_name": "Mapa",
       "url": "/?tab=mapa",
-      "description": "Mapa OpenStreetMap com download de tiles e cobertura demonstrativa claramente identificada",
+      "description": "Mapa OpenStreetMap, localização e diagnóstico de conectividade. Tiles realmente visualizados podem permanecer no cache local.",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Rios e natureza",
+      "short_name": "Rios",
+      "url": "/?tab=natureza",
+      "description": "Fontes oficiais SGB/ANA, eventos naturais e protocolos de fauna",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Defesa Civil",
       "short_name": "Defesa",
       "url": "/?tab=defesa",
-      "description": "Alertas e contatos disponíveis online ou da última cópia local",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
-    },
-    {
-      "name": "Natureza e rios",
-      "short_name": "Natureza",
-      "url": "/?tab=natureza",
-      "description": "CEMADEN, rios, fauna e eventos naturais com indicação de disponibilidade dos dados",
+      "description": "Protocolos, canais oficiais e contatos de Defesa Civil",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     }
   ],
   "file_handlers": [],
-  "launch_handler": {
-    "client_mode": "navigate-existing"
-  },
-  "edge_side_panel": {
-    "preferred_width": 400
-  },
+  "launch_handler": { "client_mode": "navigate-existing" },
+  "edge_side_panel": { "preferred_width": 400 },
   "handle_links": "preferred",
-  "id": "/",
   "scope_extensions": []
 }
