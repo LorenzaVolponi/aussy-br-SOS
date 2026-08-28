@@ -67,6 +67,15 @@ const nextConfig: NextConfig = {
         ],
       },
       {
+        source: '/api/:path*',
+        headers: [
+          // APIs são superfície operacional, não conteúdo para mecanismos de busca.
+          { key: 'X-Robots-Tag', value: 'noindex, nofollow, noarchive, nosnippet' },
+          { key: 'Cross-Origin-Resource-Policy', value: 'same-origin' },
+          { key: 'X-Permitted-Cross-Domain-Policies', value: 'none' },
+        ],
+      },
+      {
         source: '/sw.js',
         headers: [
           { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },

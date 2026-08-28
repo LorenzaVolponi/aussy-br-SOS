@@ -13,6 +13,10 @@ on:
       - 'scripts/test-emergency-precache.mjs'
       - '.github/workflows/emergency-precache.yml'
 
+concurrency:
+  group: emergency-precache-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -22,6 +26,6 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Validate emergency precache scope
         run: node scripts/test-emergency-precache.mjs
