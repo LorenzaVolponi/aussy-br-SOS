@@ -5,11 +5,25 @@ type CircuitState = { failures: number; openedAt: number | null }
 
 const rateBuckets = new Map<string, RateBucket>()
 const circuits = new Map<string, CircuitState>()
+const MAX_RATE_BUCKETS = 5000
 
 function requestIdentity(req: NextRequest): string {
   const forwarded = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
   const vercel = req.headers.get('x-vercel-forwarded-for')?.split(',')[0]?.trim()
   return forwarded || vercel || 'anonymous'
+}
+
+function pruneRateBuckets(now: number) {
+  if (rateBuckets.size < MAX_RATE_BUCKETS) return
+
+  for (const [key, bucket] of rateBuckets) {
+    if (bucket.resetAt <= now) rateBuckets.delete(key)
+  }
+
+  if (rateBuckets.size >= MAX_RATE_BUCKETS) {
+    const oldestKeys = [...rateBuckets.keys()].slice(0, Math.ceil(MAX_RATE_BUCKETS * 0.1))
+    for (const key of oldestKeys) rateBuckets.delete(key)
+  }
 }
 
 export function enforceRateLimit(
@@ -20,6 +34,8 @@ export function enforceRateLimit(
   const limit = options.limit ?? 60
   const windowMs = options.windowMs ?? 60_000
   const now = Date.now()
+  pruneRateBuckets(now)
+
   const key = `${scope}:${requestIdentity(req)}`
   const current = rateBuckets.get(key)
   const bucket = !current || current.resetAt <= now
