@@ -16,11 +16,12 @@
     "test:osm": "node scripts/test-osm-policy.mjs",
     "test:surface": "node scripts/test-client-surface.mjs",
     "test:mobile-hardware": "node scripts/test-mobile-hardware.mjs",
+    "test:mobile-reality": "node scripts/test-mobile-reality.mjs",
     "test:mobile": "playwright test tests/mobile-v1.spec.ts",
     "verify:repo": "node scripts/verify-repo.mjs",
     "verify:safety": "node scripts/run-safety-suite.mjs",
     "verify:release": "node scripts/release-readiness.mjs",
-    "verify:full": "bun run test:mobile-hardware && bun run verify:safety && bun run verify:repo && bun run type-check && bun run lint:critical && bun run build"
+    "verify:full": "bun run test:mobile-hardware && bun run test:mobile-reality && bun run verify:safety && bun run verify:repo && bun run type-check && bun run lint:critical && bun run build"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.11",
