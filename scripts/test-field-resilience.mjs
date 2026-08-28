@@ -9,6 +9,7 @@ function requireMatch(source, pattern, message) {
 }
 
 const resilience = read('src/lib/api-resilience.ts')
+const proxy = read('src/proxy.ts')
 const inmet = read('src/app/api/inmet/alerts/route.ts')
 const geocode = read('src/app/api/geocode/route.ts')
 const lite = read('src/app/emergency-lite/page.tsx')
@@ -18,8 +19,15 @@ requireMatch(resilience, /status:\s*429/, 'rate limiter must return HTTP 429')
 requireMatch(resilience, /Retry-After/, 'rate limiter/circuit breaker must publish Retry-After')
 requireMatch(resilience, /failureThreshold/, 'circuit breaker threshold contract missing')
 requireMatch(resilience, /cooldownMs/, 'circuit breaker cooldown contract missing')
+requireMatch(resilience, /MAX_RATE_BUCKETS\s*=\s*5000/, 'rate limiter memory bound missing')
+requireMatch(resilience, /pruneRateBuckets\(/, 'rate limiter pruning contract missing')
 requireMatch(resilience, /rateBuckets = new Map/, 'rate buckets must remain process-local and ephemeral')
 requireMatch(resilience, /circuits = new Map/, 'circuit state must remain process-local and ephemeral')
+
+requireMatch(proxy, /matcher:\s*\['\/api\/:path\*'\]/, 'global API matcher missing')
+requireMatch(proxy, /limit:\s*120/, 'global API ceiling missing')
+requireMatch(proxy, /\/api\/health/, 'health endpoint must be exempt from global rate limit')
+requireMatch(proxy, /\/api\/readiness/, 'readiness endpoint must be exempt from global rate limit')
 
 for (const [name, source] of [['INMET', inmet], ['Nominatim', geocode]]) {
   requireMatch(source, /enforceRateLimit\(/, `${name} must enforce rate limiting`)
