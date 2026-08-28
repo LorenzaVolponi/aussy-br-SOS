@@ -1,4 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
+import {
+  circuitUnavailable,
+  enforceRateLimit,
+  isCircuitOpen,
+  recordProviderFailure,
+  recordProviderSuccess,
+} from '@/lib/api-resilience'
 
 /**
  * OpenStreetMap Nominatim — reverse geocoding.
@@ -13,6 +20,7 @@ export const revalidate = 86400
 
 const NOMINATIM_REVERSE = 'https://nominatim.openstreetmap.org/reverse'
 const NOMINATIM_HOME = 'https://nominatim.openstreetmap.org/'
+const PROVIDER = 'nominatim-reverse'
 
 interface ReverseGeocode {
   city?: string
@@ -38,6 +46,9 @@ function parseCoordinate(value: string | null, min: number, max: number): number
 }
 
 export async function GET(req: NextRequest) {
+  const limited = enforceRateLimit(req, PROVIDER, { limit: 30, windowMs: 60_000 })
+  if (limited) return limited
+
   const lat = parseCoordinate(req.nextUrl.searchParams.get('lat'), -90, 90)
   const lon = parseCoordinate(req.nextUrl.searchParams.get('lon'), -180, 180)
 
@@ -46,6 +57,7 @@ export async function GET(req: NextRequest) {
       {
         offline: true,
         dataQuality: 'unavailable',
+        freshness: 'unavailable',
         error: 'invalid-location',
         city: null,
         displayName: null,
@@ -56,6 +68,10 @@ export async function GET(req: NextRequest) {
       },
       { status: 400 }
     )
+  }
+
+  if (isCircuitOpen(PROVIDER)) {
+    return circuitUnavailable(PROVIDER, 'OpenStreetMap Nominatim', NOMINATIM_HOME)
   }
 
   const upstream = new URL(NOMINATIM_REVERSE)
@@ -100,18 +116,14 @@ export async function GET(req: NextRequest) {
       displayName: String(data?.display_name || ''),
     }
 
-    const city =
-      result.city ||
-      result.town ||
-      result.village ||
-      result.municipality ||
-      result.county ||
-      null
+    const city = result.city || result.town || result.village || result.municipality || result.county || null
+    recordProviderSuccess(PROVIDER)
 
     return NextResponse.json(
       {
         offline: false,
         dataQuality: 'live-geocode',
+        freshness: 'live',
         source: 'OpenStreetMap Nominatim',
         sourceUrl: NOMINATIM_HOME,
         queriedAt: new Date().toISOString(),
@@ -128,10 +140,12 @@ export async function GET(req: NextRequest) {
       }
     )
   } catch {
+    recordProviderFailure(PROVIDER)
     return NextResponse.json(
       {
         offline: true,
         dataQuality: 'unavailable',
+        freshness: 'unavailable',
         error: 'upstream-unavailable',
         source: 'OpenStreetMap Nominatim',
         sourceUrl: NOMINATIM_HOME,
