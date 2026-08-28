@@ -5,13 +5,22 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      force_deploy:
+        description: "Ignorar cooldown de 60 min e publicar agora"
+        required: false
+        default: false
+        type: boolean
 
+# Global production lock: every Vercel workflow in this repository uses the
+# same concurrency group so two deployment paths cannot hit Vercel together.
 concurrency:
-  group: vercel-production-deploy
+  group: vercel-production-global-lock
   cancel-in-progress: true
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   deploy:
@@ -28,17 +37,41 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Check repository deployment cooldown
+        id: cooldown
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.force_deploy != true }}
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          VERCEL_DEPLOY_COOLDOWN_MINUTES: '60'
+          VERCEL_DEPLOY_WORKFLOW_FILE: vercel-deploy.yml
+        run: bash scripts/vercel-deploy-cooldown.sh
+
+      - name: Mark forced deployment
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.force_deploy == true }}
+        run: echo "Manual force_deploy enabled; repository cooldown bypassed intentionally." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Setup Bun 1.3.14
+        if: ${{ steps.cooldown.outcome != 'failure' || (github.event_name == 'workflow_dispatch' && inputs.force_deploy == true) }}
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
 
       - name: Cooldown before Vercel API calls
+        if: ${{ steps.cooldown.outcome != 'failure' || (github.event_name == 'workflow_dispatch' && inputs.force_deploy == true) }}
         run: sleep 45
 
-      - name: Build and deploy prebuilt production with cooldown
+      - name: Build and deploy prebuilt production with backoff
+        if: ${{ steps.cooldown.outcome != 'failure' || (github.event_name == 'workflow_dispatch' && inputs.force_deploy == true) }}
         env:
           VERCEL_DEPLOY_COOLDOWN_SECONDS: '180'
           VERCEL_RATE_LIMIT_BACKOFF_SECONDS: '180'
           VERCEL_DEPLOY_MAX_ATTEMPTS: '3'
         run: bash scripts/vercel-safe-deploy.sh
+
+      - name: Explain skipped deployment
+        if: ${{ steps.cooldown.outcome == 'failure' && !(github.event_name == 'workflow_dispatch' && inputs.force_deploy == true) }}
+        run: |
+          echo "Deployment intentionally skipped: a successful production deploy happened inside the 60-minute lock window."
+          echo "Use workflow_dispatch with force_deploy=true only for an urgent production fix."
