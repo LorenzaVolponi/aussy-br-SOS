@@ -68,12 +68,13 @@ test.describe('Aussy V1 mobile', () => {
   test('SOS quick share exposes current position, provenance and offline-safe fallbacks', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: /Compartilhar minha localização/i }).click()
-    await expect(page.getByRole('dialog')).toBeVisible()
-    await expect(page.getByText('Compartilhar minha localização', { exact: true })).toBeVisible()
-    await expect(page.getByText(/-25\.428400, -49\.273300/)).toBeVisible()
-    await expect(page.getByText(/GPS/).first()).toBeVisible()
-    await expect(page.getByRole('button', { name: /SMS/i })).toBeVisible()
-    await expect(page.getByRole('button', { name: /Copiar texto/i })).toBeVisible()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toBeVisible()
+    await expect(dialog.getByText('Compartilhar minha localização', { exact: true })).toBeVisible()
+    await expect(dialog.getByText('-25.428400, -49.273300', { exact: true })).toBeVisible()
+    await expect(dialog.getByText(/GPS/).first()).toBeVisible()
+    await expect(dialog.getByRole('button', { name: /SMS/i })).toBeVisible()
+    await expect(dialog.getByRole('button', { name: /Copiar texto/i })).toBeVisible()
   })
 
   test('bottom navigation exposes every module directly without a menu detour', async ({ page }) => {
