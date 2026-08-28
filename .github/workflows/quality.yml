@@ -38,6 +38,9 @@ jobs:
       - name: Mobile hardware and navigation contracts
         run: node scripts/test-mobile-hardware.mjs
 
+      - name: Mobile reality gate
+        run: node scripts/test-mobile-reality.mjs
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:

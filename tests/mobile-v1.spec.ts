@@ -65,6 +65,17 @@ test.describe('Aussy V1 mobile', () => {
     await expect(page.getByRole('button', { name: /Atualizar GPS/i })).toBeVisible()
   })
 
+  test('SOS quick share exposes current position, provenance and offline-safe fallbacks', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: /Compartilhar minha localização/i }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await expect(page.getByText('Compartilhar minha localização', { exact: true })).toBeVisible()
+    await expect(page.getByText(/-25\.428400, -49\.273300/)).toBeVisible()
+    await expect(page.getByText(/GPS/).first()).toBeVisible()
+    await expect(page.getByRole('button', { name: /SMS/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Copiar texto/i })).toBeVisible()
+  })
+
   test('bottom navigation exposes every module directly without a menu detour', async ({ page }) => {
     await page.goto('/')
 
@@ -98,6 +109,16 @@ test.describe('Aussy V1 mobile', () => {
     await expect(page.getByText('Localização do aparelho', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: /Atualizar GPS/i }).first()).toBeVisible()
     await expect(page.getByText(/GPS DO APARELHO|BUSCANDO|PENDENTE/).first()).toBeVisible()
+    await expect(page.getByTitle('Centralizar no GPS')).toBeVisible()
+    await expect(page.getByText(/OpenStreetMap contributors/)).toBeVisible()
+  })
+
+  test('offline preparation advertises shell, emergency and location-aware cache', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.getByText('Modo Offline & Instalação', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Preparar app agora/i })).toBeVisible()
+    await expect(page.getByText('Dados nacionais de emergência em cache', { exact: true })).toBeVisible()
+    await expect(page.getByText('Dados próximos da última posição em cache', { exact: true })).toBeVisible()
   })
 
   test('full module sheet remains available from the home command dashboard', async ({ page }) => {
