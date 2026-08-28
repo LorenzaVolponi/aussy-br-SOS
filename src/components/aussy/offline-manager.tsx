@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -27,6 +27,7 @@ interface CacheStatus {
   cacheSize: number
   cacheKeys: string[]
   precached: boolean
+  locationReady: boolean
   shellReady: boolean
 }
 
@@ -37,6 +38,23 @@ interface WorkerReport {
   failed?: string[]
   message?: string
 }
+
+type WorkerCommand = 'PRECACHE_SHELL' | 'PRECACHE_EMERGENCY' | 'PRECACHE_LOCATION'
+
+interface WorkerCommandPayload {
+  lat?: number
+  lon?: number
+}
+
+interface StoredPosition {
+  lat: number
+  lon: number
+  accuracy?: number
+  source: 'gps' | 'cached'
+  timestamp: string
+}
+
+const LOCATION_STORAGE_KEY = 'aussy_last_location_v1'
 
 async function ensureServiceWorker() {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
@@ -54,7 +72,7 @@ async function ensureServiceWorker() {
   return navigator.serviceWorker.ready
 }
 
-async function sendWorkerCommand(type: 'PRECACHE_SHELL' | 'PRECACHE_EMERGENCY'): Promise<WorkerReport> {
+async function sendWorkerCommand(type: WorkerCommand, payload: WorkerCommandPayload = {}): Promise<WorkerReport> {
   const registration = await ensureServiceWorker()
   const worker = navigator.serviceWorker.controller || registration.active || registration.waiting
   if (!worker) throw new Error('Service Worker ainda não está ativo')
@@ -72,8 +90,53 @@ async function sendWorkerCommand(type: 'PRECACHE_SHELL' | 'PRECACHE_EMERGENCY'):
       resolve(event.data as WorkerReport)
     }
 
-    worker.postMessage({ type }, [channel.port2])
+    worker.postMessage({ type, ...payload }, [channel.port2])
   })
+}
+
+function readStoredPosition(): StoredPosition | null {
+  try {
+    const raw = localStorage.getItem(LOCATION_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<StoredPosition>
+    if (!Number.isFinite(parsed.lat) || !Number.isFinite(parsed.lon)) return null
+    if ((parsed.lat as number) < -90 || (parsed.lat as number) > 90 || (parsed.lon as number) < -180 || (parsed.lon as number) > 180) return null
+    return {
+      lat: parsed.lat as number,
+      lon: parsed.lon as number,
+      accuracy: parsed.accuracy,
+      source: 'cached',
+      timestamp: parsed.timestamp || new Date().toISOString(),
+    }
+  } catch {
+    return null
+  }
+}
+
+async function captureBestAvailablePosition(): Promise<StoredPosition | null> {
+  if (!('geolocation' in navigator)) return readStoredPosition()
+
+  const gps = await new Promise<StoredPosition | null>((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const next: StoredPosition = {
+          lat: position.coords.latitude,
+          lon: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+          source: 'gps',
+          timestamp: new Date(position.timestamp).toISOString(),
+        }
+        try {
+          localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(next))
+        } catch {}
+        resolve(next)
+      },
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    )
+  })
+
+  return gps || readStoredPosition()
 }
 
 export function OfflineManager() {
@@ -140,6 +203,13 @@ export function OfflineManager() {
       const hasRoot = keys.some((key) => new URL(key).pathname === '/')
       const hasNextAsset = keys.some((key) => new URL(key).pathname.startsWith('/_next/static/'))
       const hasEmergency = keys.some((key) => new URL(key).pathname.startsWith('/api/emergency/'))
+      const hasLocationData = keys.some((key) => {
+        const pathname = new URL(key).pathname
+        return pathname.startsWith('/api/cptec/forecast') ||
+          pathname.startsWith('/api/inmet/stations') ||
+          pathname.startsWith('/api/ana/rios') ||
+          pathname.startsWith('/api/geocode')
+      })
 
       setCacheStatus({
         swRegistered: Boolean(registration),
@@ -147,6 +217,7 @@ export function OfflineManager() {
         cacheSize: totalSize,
         cacheKeys: keys,
         precached: hasEmergency,
+        locationReady: hasLocationData,
         shellReady: hasRoot && hasNextAsset,
       })
     } catch (error) {
@@ -172,19 +243,31 @@ export function OfflineManager() {
     if (choice.outcome === 'accepted') setInstallPrompt(null)
   }
 
+  const prepareLocationData = async (): Promise<WorkerReport | null> => {
+    const position = await captureBestAvailablePosition()
+    if (!position) return null
+    return sendWorkerCommand('PRECACHE_LOCATION', { lat: position.lat, lon: position.lon })
+  }
+
   const handlePrecache = async () => {
     setPrecaching(true)
     setPrecacheProgress(10)
     try {
       const shell = await sendWorkerCommand('PRECACHE_SHELL')
-      setPrecacheProgress(55)
+      setPrecacheProgress(45)
       const emergency = await sendWorkerCommand('PRECACHE_EMERGENCY')
+      setPrecacheProgress(70)
+      const location = await prepareLocationData()
       setPrecacheProgress(100)
 
-      const failed = [...(shell.failed || []), ...(emergency.failed || [])]
-      if (shell.ok && emergency.ok) {
+      const reports = [shell, emergency, location].filter((item): item is WorkerReport => Boolean(item))
+      const failed = reports.flatMap((item) => item.failed || [])
+      const succeeded = reports.reduce((sum, item) => sum + (item.succeeded || 0), 0)
+      const allOk = shell.ok && emergency.ok && (!location || location.ok)
+
+      if (allOk) {
         toast.success('Pacote offline preparado!', {
-          description: `${(shell.succeeded || 0) + (emergency.succeeded || 0)} recursos verificados no cache.`,
+          description: `${succeeded} recursos verificados no cache${location ? ', incluindo dados próximos da sua posição.' : '.'}`,
         })
       } else {
         toast.warning('Pacote offline preparado parcialmente', {
@@ -215,45 +298,41 @@ export function OfflineManager() {
       setPrepareStep('Atualizando dados críticos de emergência...')
       const emergency = await sendWorkerCommand('PRECACHE_EMERGENCY')
 
-      setPrepareStep('Salvando última posição conhecida...')
-      await new Promise<void>((resolve) => {
-        if (!('geolocation' in navigator)) return resolve()
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            try {
-              localStorage.setItem('aussy_last_location_v1', JSON.stringify({
-                lat: position.coords.latitude,
-                lon: position.coords.longitude,
-                accuracy: position.coords.accuracy,
-                source: 'gps',
-                timestamp: new Date(position.timestamp).toISOString(),
-              }))
-            } catch {}
-            resolve()
-          },
-          () => resolve(),
-          { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
-        )
-      })
+      setPrepareStep('Obtendo a melhor posição disponível...')
+      const position = await captureBestAvailablePosition()
+
+      let location: WorkerReport | null = null
+      if (position) {
+        setPrepareStep('Preparando dados próximos da sua localização...')
+        location = await sendWorkerCommand('PRECACHE_LOCATION', { lat: position.lat, lon: position.lon })
+      } else {
+        setPrepareStep('GPS indisponível; mantendo pacote nacional offline...')
+      }
 
       await checkCacheStatus()
-      const failed = [...(shell.failed || []), ...(emergency.failed || [])]
+      const reports = [shell, emergency, location].filter((item): item is WorkerReport => Boolean(item))
+      const failed = reports.flatMap((item) => item.failed || [])
+      const allOk = shell.ok && emergency.ok && (!location || location.ok)
       setPrepareStep('Pronto')
 
-      if (!shell.ok || !emergency.ok) {
+      const locationNote = location
+        ? ' Dados próximos da última posição também foram preparados.'
+        : ' GPS não estava disponível; o pacote nacional foi preservado.'
+
+      if (!allOk) {
         toast.warning('Offline preparado com pendências', {
-          description: `${failed.length} recurso(s) falharam na atualização; versões anteriores em cache foram mantidas quando disponíveis.`,
+          description: `${failed.length} recurso(s) falharam na atualização; versões anteriores em cache foram mantidas quando disponíveis.${locationNote}`,
           duration: 8000,
         })
       } else if (installPrompt) {
         toast.success('App e dados essenciais preparados!', {
-          description: 'App shell, dados críticos e última posição foram salvos. Tiles OSM não são pré-baixados; somente os visualizados podem permanecer em cache.',
+          description: `App shell e dados críticos foram salvos.${locationNote} Tiles OSM não são pré-baixados; somente os visualizados podem permanecer em cache.`,
           action: { label: 'Instalar', onClick: handleInstall },
           duration: 8000,
         })
       } else {
         toast.success('App e dados essenciais preparados!', {
-          description: 'App shell, dados críticos e última posição foram salvos. Tiles OSM não são pré-baixados; somente os visualizados podem permanecer em cache.',
+          description: `App shell e dados críticos foram salvos.${locationNote} Tiles OSM não são pré-baixados; somente os visualizados podem permanecer em cache.`,
         })
       }
     } catch (error) {
@@ -311,7 +390,7 @@ export function OfflineManager() {
             <span className="text-sm font-bold">Preparar app e dados essenciais para offline</span>
           </div>
           <p className="text-[11px] text-muted-foreground mb-3 leading-relaxed">
-            Salva o app shell, arquivos JS/CSS do Next.js, dados críticos e a última posição GPS conhecida. Isso não baixa regiões do OpenStreetMap: no mapa, apenas tiles efetivamente visualizados podem permanecer em cache.
+            Salva o app shell, arquivos JS/CSS, dados críticos, última posição conhecida e, quando o GPS está disponível, consultas úteis próximas da sua localização. Isso não baixa regiões inteiras do OpenStreetMap.
           </p>
 
           {preparingAll && (
@@ -338,7 +417,8 @@ export function OfflineManager() {
             <ChecklistItem checked={cacheStatus?.swRegistered} label="Service Worker registrado" />
             <ChecklistItem checked={cacheStatus?.swControlling} label="Página controlada pelo Service Worker" />
             <ChecklistItem checked={cacheStatus?.shellReady} label="App shell + JS/CSS em cache" />
-            <ChecklistItem checked={cacheStatus?.precached} label="Dados de emergência em cache" />
+            <ChecklistItem checked={cacheStatus?.precached} label="Dados nacionais de emergência em cache" />
+            <ChecklistItem checked={cacheStatus?.locationReady} label="Dados próximos da última posição em cache" />
             <ChecklistItem checked={isInstalled} label="App instalado na tela inicial (opcional)" />
           </div>
         </div>
@@ -418,13 +498,13 @@ export function OfflineManager() {
         <div className="text-[10px] text-muted-foreground leading-relaxed pt-2 border-t border-border/30">
           <p className="mb-1"><strong className="text-foreground">Como funciona offline:</strong></p>
           <p>
-            O Service Worker preserva o app shell, recursos estáticos e dados já preparados. Funções locais como SOS sonoro, números de emergência, guias, bússola e última posição conhecida continuam disponíveis; informações externas mostram cache ou indisponibilidade quando não houver cópia local. No mapa OSM, somente tiles efetivamente visualizados podem permanecer armazenados; o Aussy não pré-baixa regiões no servidor padrão.
+            O Service Worker preserva o app shell, recursos estáticos, dados nacionais e consultas preparadas para a última posição válida. Funções locais como SOS sonoro, números de emergência, guias, bússola e última posição conhecida continuam disponíveis; informações externas mostram cache ou indisponibilidade quando não houver cópia local. No mapa OSM, somente tiles efetivamente visualizados podem permanecer armazenados.
           </p>
         </div>
 
         <div className="flex gap-2 pt-2 flex-wrap">
           <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30">SW resiliente</Badge>
-          <Badge variant="outline" className="text-[10px] bg-signal/10 text-signal border-signal/30">Cache API</Badge>
+          <Badge variant="outline" className="text-[10px] bg-signal/10 text-signal border-signal/30">Cache por localização</Badge>
           <Badge variant="outline" className="text-[10px] bg-orbit/10 text-orbit border-orbit/30">Recovery online</Badge>
         </div>
       </CardContent>
