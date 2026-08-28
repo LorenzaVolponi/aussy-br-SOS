@@ -1,4 +1,11 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import {
+  circuitUnavailable,
+  enforceRateLimit,
+  isCircuitOpen,
+  recordProviderFailure,
+  recordProviderSuccess,
+} from '@/lib/api-resilience'
 
 /**
  * Alertas meteorológicos do INMET.
@@ -13,6 +20,7 @@ export const revalidate = 1800
 
 const ALERTS_API = 'https://apitempo.inmet.gov.br/alerta/v1/'
 const ALERTS_PORTAL = 'https://alertas2.inmet.gov.br/'
+const PROVIDER = 'inmet-alerts'
 
 interface InmetAlert {
   aviso: string
@@ -26,7 +34,11 @@ interface InmetAlert {
   cor: string
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const limited = enforceRateLimit(req, PROVIDER, { limit: 45, windowMs: 60_000 })
+  if (limited) return limited
+  if (isCircuitOpen(PROVIDER)) return circuitUnavailable(PROVIDER, 'INMET', ALERTS_PORTAL)
+
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 5000)
 
@@ -57,22 +69,27 @@ export async function GET() {
       cor: String(entry?.cor || '#f59e0b'),
     }))
 
+    recordProviderSuccess(PROVIDER)
+    const fetchedAt = new Date().toISOString()
     return NextResponse.json({
       online: true,
       dataQuality: 'live-alerts',
+      freshness: 'live',
       alerts,
       total: alerts.length,
       cached: false,
-      fetchedAt: new Date().toISOString(),
+      fetchedAt,
       source: 'INMET',
       sourceUrl: ALERTS_PORTAL,
       note: 'Resposta obtida do endpoint de alertas do INMET nesta requisição.',
     })
   } catch {
+    recordProviderFailure(PROVIDER)
     return NextResponse.json(
       {
         online: false,
         dataQuality: 'unavailable',
+        freshness: 'unavailable',
         alerts: [],
         total: 0,
         cached: false,
