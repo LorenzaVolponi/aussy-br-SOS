@@ -24,6 +24,13 @@
   ],
   "shortcuts": [
     {
+      "name": "Emergência leve",
+      "short_name": "SOS Lite",
+      "url": "/emergency-lite",
+      "description": "Contatos essenciais em uma página mínima e independente de fontes externas",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
       "name": "SOS e emergência",
       "short_name": "SOS",
       "url": "/?tab=emergency",
