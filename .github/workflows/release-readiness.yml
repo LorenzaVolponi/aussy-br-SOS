@@ -21,6 +21,9 @@ jobs:
       - name: Production operational hardening
         run: node scripts/test-operational-hardening.mjs
 
+      - name: V3 field resilience and chaos contracts
+        run: node scripts/test-field-resilience.mjs
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
